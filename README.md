@@ -1,10 +1,10 @@
-# 🏛️ Market-Midas
+# Market-Midas
 
 Market-Midas is an AI-powered, modular, "human-in-the-loop" automated trading assistant that combines quantitative technical analysis with real-time news sentiment and adversarial debate logic. Built for safe execution, the bot stages orders in a browser but explicitly waits for a human to confirm.
 
 ---
 
-## 🚀 Features
+## Features
 
 *   **Multi-Agent Architecture**: Separate specialized agents (Analyst, Strategy Engine, Researcher, Risk Manager, and Trader) power the trading pipeline.
 *   **Adversarial "Debate Mode"**: For trades with marginal confidence (50-70%), the system spawns **🐂 Bull** and **🐻 Bear** sub-agents to argue the case utilizing both technical data and live news sentiment, mitigating confirmation bias.
@@ -16,7 +16,7 @@ Market-Midas is an AI-powered, modular, "human-in-the-loop" automated trading as
 
 ---
 
-## ⚙️ How It Works (The Pipeline)
+## How It Works (The Pipeline)
 
 When `python -m src.main NVDA` is run, the Daily Cycle Coordinator executes the following:
 
@@ -42,7 +42,7 @@ When `python -m src.main NVDA` is run, the Daily Cycle Coordinator executes the 
 
 ---
 
-## 📊 Backtesting Results & Metrics
+## Backtesting Results & Metrics
 
 During early design phases, Market-Midas suffered from severe "cash drag"—it stayed primarily in cash because its RSI parameters were too strict (only buying on `RSI < 30`).
 
@@ -63,7 +63,7 @@ The implementation of position sizing increases and momentum signals fundamental
 
 ---
 
-## 🛠 Project Structure
+## Project Structure
 
 ```text
 Market-Midas/
