@@ -1,86 +1,62 @@
 # Market-Midas
 
-Market-Midas is an AI-powered, modular, "human-in-the-loop" automated trading assistant that combines quantitative technical analysis with real-time news sentiment and adversarial debate logic. Built for safe execution, the bot stages orders in a browser but explicitly waits for a human to confirm.
+Market-Midas is a powerful, local-first, AI-driven desktop application designed to act as your ultimate "human-in-the-loop" trading and equity research assistant. By combining quantitative technical analysis with real-time news sentiment and adversarial AI debate logic, Market-Midas provides institutional-grade insights directly from your desktop.
+
+🔗 **[Download the App](https://market-midas.vercel.app)** *(Currently optimized for macOS, with Windows and Linux support via Tauri)*
 
 ---
 
 ## Features
 
-*   **Multi-Agent Architecture**: Separate specialized agents (Analyst, Strategy Engine, Researcher, Risk Manager, and Trader) power the trading pipeline.
-*   **Adversarial "Debate Mode"**: For trades with marginal confidence (50-70%), the system spawns **🐂 Bull** and **🐻 Bear** sub-agents to argue the case utilizing both technical data and live news sentiment, mitigating confirmation bias.
-*   **Real-time Sentiment Analysis (Sentinel)**: Scrapes, parses, and scores headlines from Google News and Yahoo Finance RSS feeds using financial keyword lexicons.
-*   **Executive Dashboard (Morning Briefing)**: A premium, institution-grade Next.js web dashboard featuring solid colors, crisp typography (`Cormorant`/`Poppins`), and automated data visualization (Technical Confidence vs Sentiment).
-*   **Browser-Based Trade Staging (Playwright)**: When in `LIVE` mode, the bot opens Robinhood, waits for 2FA, navigates to the stock, scrapes the live price, and fills out the order form.
-*   **Air-Gapped Safety Constraints**: The exact "Review Order", "Submit", and "Confirm" buttons are strictly blacklisted. The web dashboard pauses awaiting explicit human authorization (Kill-Switch or Confirm Execution) before the Playwright payload is sent.
-*   **Dual-Mode Execution**: Built-in toggle between `PAPER` (simulated execution JSON logging) and `LIVE` (browser-assisted) trading directly from the Landing Page.
+*   **Native Desktop Experience**: Built using Tauri, delivering a lightning-fast, lightweight, and secure desktop application that runs locally on your machine.
+*   **Bring Your Own Agent (BYOA) with LiteLLM**: Market-Midas integrates seamlessly with LiteLLM, allowing you to plug in your preferred AI models (Anthropic Claude, OpenAI ChatGPT, Google Gemini, or local models) to power your trading agents. 
+*   **Multi-Agent Architecture**: Separate specialized agents (Analyst, Strategy Engine, Researcher, Risk Manager, and Trader) power the analysis pipeline.
+*   **Adversarial "Debate Mode"**: For ambiguous market conditions, the system spawns **🐂 Bull** and **🐻 Bear** sub-agents to argue the case utilizing both technical data and live news sentiment, mitigating confirmation bias before you make a decision.
+*   **Real-time Sentiment Analysis (Sentinel)**: Scrapes, parses, and scores headlines using financial keyword lexicons to give you the fundamental context behind the price action.
+*   **Air-Gapped Safety Constraints**: Explicit "human-in-the-loop" design. The AI scopes the trades, analyzes the data, and stages the logic, but explicitly waits for a human to confirm before any action is executed.
 
 ---
 
 ## How It Works (The Pipeline)
 
-When `python -m src.main NVDA` is run, the Daily Cycle Coordinator executes the following:
+When you research a ticker in the Market-Midas desktop app, the system executes the following cycle locally:
 
 1.  **Technical Ingestion (Analyst Agent)**
-    *   Fetches the latest 6-month OHLCV data via `yfinance`.
+    *   Fetches the latest OHLCV data.
     *   Computes core indicators: **SMA-50**, **SMA-200** (checking for Golden/Death crosses), and **RSI-14**.
 2.  **Composite Scoring (Strategy Engine)**
-    *   Weights the technicals (RSI 40%, SMA trend 30%, Crosses 20%, Momentum 10%) into a final **Confidence Score (0-100%)**.
-    *   Classifies the trade into zones: `STRONG` (≥70%), `MARGINAL` (50-70%), or `NEUTRAL` (<50%).
+    *   Weights the technicals (RSI, SMA trend, Crosses, Momentum) into a final **Confidence Score**.
 3.  **Fundamental Context (Researcher/Sentinel Agent)**
-    *   Fetches the top ~15 headlines for the ticker.
+    *   Fetches the top latest headlines for the ticker.
     *   Produces a composite News Sentiment score between `-1.0` (Max Bearish) and `+1.0` (Max Bullish).
 4.  **Structured Analytic Technique (Debate Mode)**
-    *   Triggers automatically if the trade is in the `MARGINAL` zone.
+    *   Leverages your chosen LiteLLM model.
     *   **Bull** combines oversold technicals with bullish headlines to argue *for* the trade.
-    *   **Bear** uses momentum drops and bearish headlines (plus contrarian warnings) to argue *against* it.
-    *   Calculates a final conviction score, resulting in either a `PROCEED`, `SKIP`, or `REDUCE_SIZE` (on a draw) recommendation.
+    *   **Bear** uses momentum drops and bearish headlines to argue *against* it.
+    *   Calculates a final conviction score and presents the summarized debate in the UI.
 5.  **Position Sizing (Risk Manager)**
-    *   Operates using fractional Kelly-criterion logic, capping maximum allocation per trade to **25% of total portfolio cash**.
-6.  **Human-in-the-Loop Execution (Trader Agent)**
-    *   **If PAPER:** Evaluates the trade, deducts simulated cash, updates the simulated portfolio, and logs to `logs/paper_trades.json`.
-    *   **If LIVE:** Launches Playwright, navigates Robinhood, fills the order form, and **halts completely**, throwing a bold red warning awaiting `ENTER` to confirm or `CTRL+C` to cancel.
+    *   Operates using fractional Kelly-criterion logic, recommending safe maximum allocations based on your portfolio.
 
 ---
 
-## Backtesting Results & Metrics
+## 📊 Performance & Optimization Philosophy
 
-During early design phases, Market-Midas suffered from severe "cash drag"—it stayed primarily in cash because its RSI parameters were too strict (only buying on `RSI < 30`).
+Market-Midas isn't a black-box trading bot—it's an intelligence augmentation tool. During our development and backtesting, we optimized the logic to prevent "cash drag" (holding cash too long during bull markets) by:
+1.  **Relaxed Risk Constraints:** Implementing an optimized position sizing algorithm allowing up to 25% chunks based on conviction.
+2.  **Momentum Buy Signals:** Adding logic to buy swing momentum rather than waiting exclusively for deep oversold dips.
 
-We implemented two major optimizations:
-1.  **Relaxed Risk Constraints:** Increased maximum position allocation from strict 5% chunks to **25%** chunks.
-2.  **Momentum Buy Signals:** Added logic to buy swing momentum (`Close > SMA_50` AND `50 < RSI < 70`), catching uptrends rather than waiting exclusively for deep oversold dips.
-
-### Comparative Baseline (NVDA Backtest Optimization)
-*(Ran over 2 years of daily data)*
-
-| Metric | Conservative (Baseline) | Momentum & 25% Size (Optimized) | Delta |
-| :--- | :--- | :--- | :--- |
-| **Total Return** | +1.27% | **+11.92%** | **+10.65% 📈** |
-| **Max Drawdown** | -18.40% | **-6.69%** | **+11.71% 🛡️** |
-| **Cash Drag Exposure** | Extreme (>95% cash) | Balanced | Greatly Improved |
-
-The implementation of position sizing increases and momentum signals fundamentally changed the profile: yielding roughly 10x the returns while structurally cutting the max drawdown by more than half, thanks to more agile entries and exits above the 50-day moving average.
+By marrying these quantitative principles with robust AI reasoning via LiteLLM, Market-Midas helps retail traders make highly analytical decisions without emotional bias.
 
 ---
 
-## Project Structure
+## 🛠 Tech Stack
 
-```text
-Market-Midas/
-├── artifacts/
-│   └── daily_report_{date}.md       # Executive Morning Briefings / Dashboards
-├── logs/
-│   └── paper_trades.json            # Simulated trading ledger
-├── src/
-│   ├── agents/
-│   │   ├── analyst.py               # Technical data ingestion & indicators
-│   │   ├── researcher.py            # Sentinel (News fetching & sentiment scoring)
-│   │   └── trader.py                # Playwright execution and kill-switch
-│   ├── risk/
-│   │   └── manager.py               # Portfolio sizing (25% cap logic)
-│   ├── strategy/
-│   │   ├── engine.py                # Confidence weighting (0-100%)
-│   │   └── debate.py                # Bull vs Bear adversarial logic
-│   └── main.py                      # Daily Cycle orchestrator and CLI
-└── README.md                        # Project documentation (You are here)
-```
+*   **Frontend UI**: React / Next.js
+*   **Desktop Framework**: Tauri (Rust)
+*   **Backend Logic**: Python
+*   **AI Integration**: LiteLLM (Supports Anthropic, OpenAI, Gemini, etc.)
+
+---
+
+## 📄 License
+MIT License
