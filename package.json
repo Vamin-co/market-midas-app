@@ -1,0 +1,15 @@
+{
+    "name": "market-midas",
+    "private": true,
+    "scripts": {
+        "dev": "concurrently -n api,next,tauri -c blue,green,yellow \"npm run dev:api\" \"npm run dev:next\" \"npm run dev:tauri\"",
+        "dev:api": "cd /Users/vandanamin/Desktop/Market-Midas && source ~/.cargo/env && uvicorn src.server:app --host 0.0.0.0 --port 8000 --reload",
+        "dev:next": "wait-on http://localhost:8000/docs -d 1000 && cd frontend && npm run dev:frontend",
+        "dev:tauri": "wait-on http://localhost:3001 -d 1000 && cd frontend && source ~/.cargo/env && npx tauri dev",
+        "build:mac": "cd frontend && npm run build && npx tauri build"
+    },
+    "devDependencies": {
+        "concurrently": "^9.2.1",
+        "wait-on": "^9.0.4"
+    }
+}

@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Debate Mode: NVDA Analysis Workspace</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Lora:wght@400;500;600;700&amp;family=Poppins:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#8eb895",
+                        "secondary-red": "#C86A58",
+                        "background-light": "#F9F8F6",
+                        "background-dark": "#171b17",
+                        "charcoal": "#2D2D2D",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                        "serif": ["Lora", "serif"],
+                        "poppins": ["Poppins", "sans-serif"],
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        .debate-scroll::-webkit-scrollbar {
+            width: 4px;
+        }
+        .debate-scroll::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .debate-scroll::-webkit-scrollbar-thumb {
+            background: #e5e7eb;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-charcoal dark:text-slate-100 min-h-screen flex flex-col">
+<!-- Header Section -->
+<header class="w-full border-b border-slate-200 dark:border-slate-800 bg-background-light dark:bg-background-dark px-8 py-6 sticky top-0 z-50">
+<div class="max-w-[1600px] mx-auto flex items-center justify-between">
+<div class="flex flex-col gap-1">
+<div class="flex items-center gap-2 text-primary">
+<span class="material-symbols-outlined text-2xl">analytics</span>
+<span class="text-xs font-bold tracking-widest uppercase font-poppins">Market-Midas Alpha</span>
+</div>
+<h1 class="font-serif text-3xl font-bold text-charcoal dark:text-slate-100">Debate Mode: NVDA Sector Analysis</h1>
+</div>
+<div class="flex items-center gap-6">
+<div class="flex flex-col items-end">
+<span class="text-[10px] uppercase font-bold text-slate-400">Current Session</span>
+<span class="font-poppins font-medium">#NVDA-2024-Q3-EXP</span>
+</div>
+<div class="h-10 w-[1px] bg-slate-200 dark:bg-slate-800"></div>
+<div class="flex gap-3">
+<button class="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 transition-colors">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<button class="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 transition-colors">
+<span class="material-symbols-outlined">share</span>
+</button>
+</div>
+</div>
+</div>
+</header>
+<!-- Main Content: Split Pane -->
+<main class="flex-1 flex max-w-[1600px] mx-auto w-full gap-6 p-8 pb-32">
+<!-- Left Pane: Conversational Arena -->
+<section class="w-1/2 flex flex-col gap-6">
+<div class="flex items-center justify-between">
+<h2 class="font-poppins font-semibold text-lg flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">forum</span>
+                    Conversational Arena
+                </h2>
+<div class="flex items-center gap-2">
+<span class="size-2 rounded-full bg-primary"></span>
+<span class="text-xs font-medium text-slate-500 uppercase tracking-tighter">Live Synthesis</span>
+</div>
+</div>
+<div class="debate-scroll flex-1 overflow-y-auto pr-4 flex flex-col gap-8">
+<!-- Bull Agent Message -->
+<div class="flex flex-col gap-3">
+<div class="flex items-center gap-2">
+<div class="size-8 rounded bg-primary flex items-center justify-center text-white">
+<span class="material-symbols-outlined text-sm">trending_up</span>
+</div>
+<span class="font-poppins font-bold text-sm text-primary uppercase tracking-wide">Bull Agent</span>
+<span class="text-[10px] text-slate-400 font-medium">14:02:11</span>
+</div>
+<div class="p-5 rounded-xl border border-primary/30 bg-primary/10 flex flex-col gap-4">
+<p class="font-display leading-relaxed">
+                            NVDA is showing extreme resilience at the $850 support level. We've observed a <span class="font-bold underline">12% volume spike</span> in institutional dark pool activity over the last 4 hours. Technical indicators suggest a massive breakout if resistance at $892 is tested.
+                        </p>
+<div class="flex flex-wrap gap-2">
+<div class="px-2 py-1 rounded bg-primary/20 border border-primary/30 text-[10px] font-bold text-primary uppercase tracking-tight flex items-center gap-1">
+<span class="material-symbols-outlined text-xs">bolt</span> Vol. Spike
+                            </div>
+<div class="px-2 py-1 rounded bg-primary/20 border border-primary/30 text-[10px] font-bold text-primary uppercase tracking-tight flex items-center gap-1">
+<span class="material-symbols-outlined text-xs">analytics</span> Dark Pool Inflow
+                            </div>
+</div>
+<div class="flex flex-col gap-1.5">
+<div class="flex justify-between text-[10px] font-bold uppercase text-primary">
+<span>Confidence Meter</span>
+<span>88%</span>
+</div>
+<div class="w-full h-1.5 bg-primary/20 rounded-full overflow-hidden">
+<div class="h-full bg-primary" style="width: 88%"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Bear Agent Message -->
+<div class="flex flex-col gap-3">
+<div class="flex items-center gap-2">
+<div class="size-8 rounded bg-secondary-red flex items-center justify-center text-white">
+<span class="material-symbols-outlined text-sm">trending_down</span>
+</div>
+<span class="font-poppins font-bold text-sm text-secondary-red uppercase tracking-wide">Bear Agent</span>
+<span class="text-[10px] text-slate-400 font-medium">14:03:45</span>
+</div>
+<div class="p-5 rounded-xl border border-secondary-red/30 bg-secondary-red/10 flex flex-col gap-4">
+<p class="font-display leading-relaxed">
+                            Counter-point: The 4H RSI has crossed into the <span class="font-bold italic">Overbought zone (76.4)</span>. Historically, this precedes a 4-6% correction in semiconductor stocks during similar macro cycles. The upcoming CPI print introduces significant downside risk.
+                        </p>
+<div class="flex flex-wrap gap-2">
+<div class="px-2 py-1 rounded bg-secondary-red/20 border border-secondary-red/30 text-[10px] font-bold text-secondary-red uppercase tracking-tight flex items-center gap-1">
+<span class="material-symbols-outlined text-xs">warning</span> Overbought RSI
+                            </div>
+<div class="px-2 py-1 rounded bg-secondary-red/20 border border-secondary-red/30 text-[10px] font-bold text-secondary-red uppercase tracking-tight flex items-center gap-1">
+<span class="material-symbols-outlined text-xs">public</span> Macro Headwind
+                            </div>
+</div>
+<div class="flex flex-col gap-1.5">
+<div class="flex justify-between text-[10px] font-bold uppercase text-secondary-red">
+<span>Confidence Meter</span>
+<span>64%</span>
+</div>
+<div class="w-full h-1.5 bg-secondary-red/20 rounded-full overflow-hidden">
+<div class="h-full bg-secondary-red" style="width: 64%"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Bull Agent Rebuttal -->
+<div class="flex flex-col gap-3">
+<div class="flex items-center gap-2">
+<div class="size-8 rounded bg-primary flex items-center justify-center text-white">
+<span class="material-symbols-outlined text-sm">trending_up</span>
+</div>
+<span class="font-poppins font-bold text-sm text-primary uppercase tracking-wide">Bull Agent</span>
+<span class="text-[10px] text-slate-400 font-medium">14:05:02</span>
+</div>
+<div class="p-5 rounded-xl border border-primary/30 bg-primary/10 flex flex-col gap-4">
+<p class="font-display leading-relaxed">
+                            While RSI is elevated, the sector-wide demand for H200 chips remains unpriced. We recommend a staggered entry approach to mitigate the correction risk identified by the Bear Agent.
+                        </p>
+<div class="flex flex-col gap-1.5">
+<div class="flex justify-between text-[10px] font-bold uppercase text-primary">
+<span>Strategic Confidence</span>
+<span>92%</span>
+</div>
+<div class="w-full h-1.5 bg-primary/20 rounded-full overflow-hidden">
+<div class="h-full bg-primary" style="width: 92%"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Right Pane: Dynamic Data Canvas (Bento Box) -->
+<section class="w-1/2 flex flex-col gap-6">
+<h2 class="font-poppins font-semibold text-lg flex items-center gap-2">
+<span class="material-symbols-outlined text-slate-400">grid_view</span>
+                Dynamic Data Canvas
+            </h2>
+<div class="grid grid-cols-2 grid-rows-3 gap-4 h-full">
+<!-- RSI Chart Card -->
+<div class="col-span-1 row-span-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col gap-4 shadow-sm">
+<div class="flex justify-between items-start">
+<div class="flex flex-col">
+<span class="text-[10px] font-bold text-slate-400 uppercase">4H RSI Indicator</span>
+<span class="text-xl font-poppins font-bold">76.42</span>
+</div>
+<span class="material-symbols-outlined text-secondary-red">show_chart</span>
+</div>
+<div class="flex-1 flex items-end gap-1 overflow-hidden h-24">
+<!-- Mock Sparkline -->
+<div class="w-2 bg-slate-100 dark:bg-slate-800 rounded-t-sm" style="height: 40%"></div>
+<div class="w-2 bg-slate-100 dark:bg-slate-800 rounded-t-sm" style="height: 45%"></div>
+<div class="w-2 bg-slate-100 dark:bg-slate-800 rounded-t-sm" style="height: 55%"></div>
+<div class="w-2 bg-slate-100 dark:bg-slate-800 rounded-t-sm" style="height: 50%"></div>
+<div class="w-2 bg-slate-100 dark:bg-slate-800 rounded-t-sm" style="height: 65%"></div>
+<div class="w-2 bg-slate-200 dark:bg-slate-700 rounded-t-sm" style="height: 75%"></div>
+<div class="w-2 bg-secondary-red rounded-t-sm" style="height: 85%"></div>
+<div class="w-2 bg-secondary-red rounded-t-sm" style="height: 80%"></div>
+<div class="w-2 bg-secondary-red rounded-t-sm" style="height: 90%"></div>
+</div>
+</div>
+<!-- Sentiment Card -->
+<div class="col-span-1 row-span-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col gap-4 shadow-sm">
+<div class="flex justify-between items-start">
+<div class="flex flex-col">
+<span class="text-[10px] font-bold text-slate-400 uppercase">Macro Sentiment</span>
+<span class="text-xl font-poppins font-bold text-primary">Bullish</span>
+</div>
+<span class="material-symbols-outlined text-primary">sentiment_satisfied</span>
+</div>
+<ul class="flex flex-col gap-2">
+<li class="text-[11px] flex items-center justify-between border-b border-slate-50 dark:border-slate-800 pb-1">
+<span class="truncate">Fed Interest Rate Stability</span>
+<span class="text-primary font-bold">High</span>
+</li>
+<li class="text-[11px] flex items-center justify-between border-b border-slate-50 dark:border-slate-800 pb-1">
+<span class="truncate">Semiconductor ETF (SOXX)</span>
+<span class="text-primary font-bold">+2.4%</span>
+</li>
+<li class="text-[11px] flex items-center justify-between">
+<span class="truncate">Supply Chain Logistics</span>
+<span class="text-secondary-red font-bold">Neutral</span>
+</li>
+</ul>
+</div>
+<!-- Institutional Flow Table -->
+<div class="col-span-2 row-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col gap-4 shadow-sm overflow-hidden">
+<div class="flex justify-between items-center">
+<h3 class="font-poppins font-bold text-sm flex items-center gap-2">
+<span class="material-symbols-outlined text-xs">account_balance</span>
+                            Institutional Order Flow
+                        </h3>
+<span class="text-[10px] font-bold text-slate-400">REAL-TIME FEED</span>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left text-xs">
+<thead>
+<tr class="text-slate-400 border-b border-slate-100 dark:border-slate-800">
+<th class="py-2 font-medium">Institution</th>
+<th class="py-2 font-medium">Action</th>
+<th class="py-2 font-medium">Size</th>
+<th class="py-2 font-medium">Price</th>
+<th class="py-2 font-medium text-right">Time</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-slate-50 dark:divide-slate-800">
+<tr>
+<td class="py-3 font-semibold">Goldman Sachs</td>
+<td class="py-3 text-primary font-bold">BUY</td>
+<td class="py-3">145k</td>
+<td class="py-3">$852.10</td>
+<td class="py-3 text-right text-slate-400">13:58:22</td>
+</tr>
+<tr>
+<td class="py-3 font-semibold">BlackRock</td>
+<td class="py-3 text-primary font-bold">BUY</td>
+<td class="py-3">280k</td>
+<td class="py-3">$851.95</td>
+<td class="py-3 text-right text-slate-400">13:54:10</td>
+</tr>
+<tr>
+<td class="py-3 font-semibold">Citadel Sec.</td>
+<td class="py-3 text-secondary-red font-bold">SELL</td>
+<td class="py-3">92k</td>
+<td class="py-3">$853.40</td>
+<td class="py-3 text-right text-slate-400">13:51:04</td>
+</tr>
+<tr>
+<td class="py-3 font-semibold">Morgan Stanley</td>
+<td class="py-3 text-primary font-bold">BUY</td>
+<td class="py-3">65k</td>
+<td class="py-3">$852.00</td>
+<td class="py-3 text-right text-slate-400">13:48:55</td>
+</tr>
+<tr>
+<td class="py-3 font-semibold">JPMorgan</td>
+<td class="py-3 text-primary font-bold">BUY</td>
+<td class="py-3">112k</td>
+<td class="py-3">$852.05</td>
+<td class="py-3 text-right text-slate-400">13:44:12</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Anchored Action Bar -->
+<footer class="fixed bottom-0 left-0 w-full bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 shadow-[0_-4px_20px_-5px_rgba(0,0,0,0.1)] py-4 px-8 z-[100]">
+<div class="max-w-[1600px] mx-auto flex items-center justify-between">
+<div class="flex items-center gap-4">
+<div class="relative flex items-center justify-center">
+<span class="absolute inline-flex h-full w-full rounded-full bg-secondary-red opacity-20 animate-ping"></span>
+<span class="material-symbols-outlined text-secondary-red text-3xl">pause_circle</span>
+</div>
+<div class="flex flex-col">
+<p class="font-poppins font-bold text-secondary-red tracking-tight leading-none uppercase text-sm">Execution Pipeline PAUSED</p>
+<p class="text-[11px] text-slate-500 font-medium">Awaiting Manual Supervisor Authorization (Admin Level 4)</p>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="flex items-center gap-3 bg-secondary-red text-white font-poppins font-bold px-8 py-4 rounded-lg hover:brightness-110 transition-all uppercase tracking-wider text-sm shadow-lg shadow-secondary-red/20">
+<span class="material-symbols-outlined">block</span>
+                    Kill-Switch / Abort
+                </button>
+<button class="flex items-center gap-3 bg-primary text-white font-poppins font-bold px-8 py-4 rounded-lg hover:brightness-110 transition-all uppercase tracking-wider text-sm shadow-lg shadow-primary/20">
+<span class="material-symbols-outlined">check_circle</span>
+                    Confirm Execution
+                </button>
+</div>
+</div>
+</footer>
+</body></html>

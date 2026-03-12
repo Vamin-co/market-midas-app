@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Market-Midas Executive Morning Briefing</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Lora:ital,wght@0,400;0,700;1,400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#8eb895",
+                        "terracotta": "#C86A58",
+                        "charcoal": "#2D2D2D",
+                        "background-light": "#F9F8F6",
+                        "background-dark": "#171b17",
+                        "muted-sage": "#eef4ef",
+                        "muted-terracotta": "#f9f1ef"
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                        "serif": ["Lora", "serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #F9F8F6;
+            color: #2D2D2D;
+        }
+        .font-serif {
+            font-family: 'Lora', serif;
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-charcoal dark:text-slate-100 min-h-screen">
+<div class="max-w-[1200px] mx-auto px-6 py-8">
+<!-- Header Section -->
+<header class="flex flex-col md:flex-row md:items-end justify-between border-b border-charcoal/10 pb-6 mb-8">
+<div class="space-y-1">
+<h1 class="text-4xl font-serif font-bold tracking-tight">Morning Briefing</h1>
+<p class="text-charcoal/60 dark:text-slate-400 font-display text-sm uppercase tracking-widest">
+                    October 24, 2023 <span class="mx-2">|</span> 08:45 AM EST
+                </p>
+</div>
+<div class="mt-4 md:mt-0 flex items-center gap-4">
+<div class="flex flex-col items-end">
+<span class="text-xs font-bold text-charcoal/40 uppercase tracking-tighter">Current Ticker</span>
+<span class="text-3xl font-display font-black text-primary">NVDA</span>
+</div>
+<div class="h-10 w-[1px] bg-charcoal/10 mx-2"></div>
+<button class="bg-charcoal text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-charcoal/90 transition-colors">
+                    Market Open
+                </button>
+</div>
+</header>
+<!-- Top Section: Data Cards -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+<!-- Technical Confidence Card -->
+<div class="bg-white dark:bg-charcoal/20 border border-charcoal/5 rounded-xl p-6 flex flex-col items-center justify-center text-center">
+<h2 class="text-charcoal/50 dark:text-slate-400 text-xs font-bold uppercase tracking-widest mb-6">Technical Confidence</h2>
+<div class="relative w-48 h-24 mb-4 overflow-hidden">
+<!-- Semi-circular Gauge -->
+<div class="absolute top-0 left-0 w-48 h-48 border-[16px] border-primary/20 rounded-full"></div>
+<div class="absolute top-0 left-0 w-48 h-48 border-[16px] border-primary rounded-full" style="clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%); transform: rotate(145deg);"></div>
+<div class="absolute bottom-0 inset-x-0 flex flex-col items-center">
+<span class="text-4xl font-display font-black">82%</span>
+</div>
+</div>
+<div class="flex flex-wrap justify-center gap-2 mt-4">
+<span class="bg-primary/10 text-primary text-[10px] font-bold px-2 py-1 rounded border border-primary/20 uppercase">RSI Oversold</span>
+<span class="bg-primary/10 text-primary text-[10px] font-bold px-2 py-1 rounded border border-primary/20 uppercase">EMA Cross</span>
+<span class="bg-primary/10 text-primary text-[10px] font-bold px-2 py-1 rounded border border-primary/20 uppercase">Volume Spike</span>
+</div>
+</div>
+<!-- Composite Sentiment Card -->
+<div class="bg-white dark:bg-charcoal/20 border border-charcoal/5 rounded-xl p-6">
+<div class="flex justify-between items-center mb-4">
+<h2 class="text-charcoal/50 dark:text-slate-400 text-xs font-bold uppercase tracking-widest">Composite Sentiment</h2>
+<span class="text-terracotta text-xs font-bold uppercase flex items-center gap-1">
+<span class="material-symbols-outlined text-sm">trending_down</span> Bearish Pulse
+                    </span>
+</div>
+<div class="space-y-4">
+<div class="flex items-start gap-3 group">
+<div class="mt-1 size-2 rounded-full bg-terracotta shrink-0"></div>
+<div>
+<p class="text-sm font-medium leading-tight group-hover:text-terracotta transition-colors">Macro headwinds and rising bond yields pressure tech valuations.</p>
+<p class="text-[10px] text-charcoal/40 dark:text-slate-500 uppercase mt-1">WSJ • 12m ago</p>
+</div>
+</div>
+<div class="flex items-start gap-3 group">
+<div class="mt-1 size-2 rounded-full bg-terracotta shrink-0"></div>
+<div>
+<p class="text-sm font-medium leading-tight group-hover:text-terracotta transition-colors">Semiconductor sector rotation observed in institutional flows.</p>
+<p class="text-[10px] text-charcoal/40 dark:text-slate-500 uppercase mt-1">Bloomberg • 45m ago</p>
+</div>
+</div>
+<div class="flex items-start gap-3 group">
+<div class="mt-1 size-2 rounded-full bg-primary shrink-0"></div>
+<div>
+<p class="text-sm font-medium leading-tight group-hover:text-primary transition-colors">New AI-driven architecture shows 40% performance gain in early benchmarks.</p>
+<p class="text-[10px] text-charcoal/40 dark:text-slate-500 uppercase mt-1">Reuters • 2h ago</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Middle Section: Debate Mode -->
+<div class="mb-8">
+<div class="flex items-center gap-3 mb-6">
+<span class="material-symbols-outlined text-charcoal/40">forum</span>
+<h2 class="text-2xl font-serif font-bold">Debate Mode</h2>
+<div class="h-[1px] flex-1 bg-charcoal/10"></div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-0 border border-charcoal/10 rounded-xl overflow-hidden bg-white dark:bg-charcoal/20">
+<!-- Bull Agent -->
+<div class="p-8 border-r border-charcoal/10">
+<div class="flex items-center gap-3 mb-6">
+<div class="size-10 rounded-full bg-primary/20 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined font-bold">trending_up</span>
+</div>
+<div>
+<p class="text-xs font-bold text-primary uppercase tracking-wider">Bull Agent</p>
+<p class="text-charcoal font-bold">The Constructive Thesis</p>
+</div>
+</div>
+<div class="space-y-6 text-sm leading-relaxed text-charcoal/80 dark:text-slate-300">
+<p>Market structure remains robust despite recent volatility. NVDA is currently testing key support levels at <span class="font-bold text-primary">$450</span>, which has historically attracted institutional accumulation.</p>
+<ul class="list-none space-y-3">
+<li class="flex items-start gap-2">
+<span class="material-symbols-outlined text-primary text-sm mt-0.5">check_circle</span>
+<span>RSI indicates an oversold condition on the 4H timeframe, signaling a mean reversion is imminent.</span>
+</li>
+<li class="flex items-start gap-2">
+<span class="material-symbols-outlined text-primary text-sm mt-0.5">check_circle</span>
+<span>Institutional dark pool activity shows significant size at these price levels.</span>
+</li>
+</ul>
+</div>
+</div>
+<!-- Bear Agent -->
+<div class="p-8 bg-muted-terracotta/10 dark:bg-terracotta/5">
+<div class="flex items-center gap-3 mb-6">
+<div class="size-10 rounded-full bg-terracotta/20 flex items-center justify-center text-terracotta">
+<span class="material-symbols-outlined font-bold">trending_down</span>
+</div>
+<div>
+<p class="text-xs font-bold text-terracotta uppercase tracking-wider">Bear Agent</p>
+<p class="text-charcoal font-bold">The Skeptical Thesis</p>
+</div>
+</div>
+<div class="space-y-6 text-sm leading-relaxed text-charcoal/80 dark:text-slate-300">
+<p>Macro headwinds are too significant to ignore. The current multiple is overextended relative to 10-year Treasury yields, posing a risk of <span class="font-bold text-terracotta">valuation compression</span>.</p>
+<ul class="list-none space-y-3">
+<li class="flex items-start gap-2">
+<span class="material-symbols-outlined text-terracotta text-sm mt-0.5">warning</span>
+<span>Recent sector rotation suggests capital is moving toward defensive value plays.</span>
+</li>
+<li class="flex items-start gap-2">
+<span class="material-symbols-outlined text-terracotta text-sm mt-0.5">warning</span>
+<span>Earnings risk is high; any guidance miss could trigger a sharp 15% correction.</span>
+</li>
+</ul>
+</div>
+</div>
+</div>
+</div>
+<!-- Bottom Section: Execution Interlock -->
+<div class="bg-charcoal text-white rounded-xl p-8 flex flex-col md:flex-row items-center justify-between gap-6 border-t-4 border-primary">
+<div class="text-center md:text-left">
+<h3 class="text-xl font-serif font-bold mb-1">Execution Interlock</h3>
+<p class="text-white/60 text-sm">Review complete. System primed for NVDA long entry. Total Risk: 1.5% AUM.</p>
+</div>
+<div class="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
+<button class="flex-1 md:flex-none min-w-[200px] h-14 bg-primary text-charcoal font-black text-sm uppercase tracking-widest rounded-lg flex items-center justify-center gap-2 hover:bg-primary/90 transition-all active:scale-95 shadow-lg shadow-primary/10">
+<span class="material-symbols-outlined">bolt</span>
+                    Confirm Execution
+                </button>
+<button class="flex-1 md:flex-none min-w-[200px] h-14 bg-terracotta text-white font-black text-sm uppercase tracking-widest rounded-lg flex items-center justify-center gap-2 hover:bg-terracotta/90 transition-all active:scale-95 border border-white/10">
+<span class="material-symbols-outlined">cancel</span>
+                    Kill-Switch / Abort
+                </button>
+</div>
+</div>
+<footer class="mt-12 text-center text-charcoal/30 dark:text-slate-600 text-[10px] uppercase tracking-widest font-bold">
+            © 2023 Market-Midas Systems • High-Precision Execution Terminal
+        </footer>
+</div>
+</body></html>

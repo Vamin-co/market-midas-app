@@ -1,0 +1,17 @@
+# Market-Midas Dependencies
+# Core
+pandas>=2.2.0
+yfinance>=0.2.36
+ta>=0.11.0
+
+# Browser automation (backup)
+playwright>=1.41.0
+
+# Configuration
+python-dotenv>=1.0.0
+
+# Testing
+pytest>=8.0.0
+
+# Phase 4: Background polling
+apscheduler>=3.10.0

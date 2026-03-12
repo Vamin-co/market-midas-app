@@ -1,0 +1,36 @@
+{
+  "name": "frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev:frontend": "next dev -p 3001",
+    "dev:backend": "cd .. && uvicorn src.server:app --host 0.0.0.0 --port 8000 --reload",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "tauri:dev": "npm run dev:backend & npx tauri dev",
+    "tauri:build": "next build && npx tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-shell": "^2.3.5",
+    "lucide-react": "^0.577.0",
+    "next": "16.1.6",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@tauri-apps/cli": "^2",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "concurrently": "^9.2.1",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.6",
+    "tailwind-scrollbar": "^4.0.2",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
