@@ -1,80 +1,170 @@
-# Product Requirements Document (PRD): Project "Market-Midas"
+# Product Requirements Document — Market Midas
 
 ## 1. Executive Summary
-**Product Name:** Market-Midas
-**Goal:** Develop an automated trading assistant that identifies high-probability swing trade opportunities on the Robinhood platform.
-**Core Value:** The system combines quantitative technical analysis (Python) with qualitative sentiment analysis (Claude Opus 4.6) to generate trade signals. It utilizes Google Antigravity’s browser agents to execute or stage trades directly on the Robinhood web interface.
 
-## 2. System Architecture & Tech Stack
-*   **Platform:** Google Antigravity IDE (Agent-First Development Environment).
-*   **Core Intelligence:** Claude Opus 4.6 (via API/Antigravity integration).
-    *   *Configuration:* Set `effort` to "High" or "Max" for deep reasoning on financial data [1][2].
-    *   *Context:* Utilization of the **1M token window** for analyzing historical data and earnings reports [3][4].
-*   **Language:** Python 3.12+.
-*   **Key Libraries:** `pandas` (data manipulation), `yfinance` (market data), `ta` (technical analysis), `playwright` (browser automation backup).
-*   **Brokerage:** Robinhood (Web Interface interaction via Antigravity Browser Agent).
+**Product:** Market Midas
+**Type:** Native macOS trading terminal (Tauri 2.0 desktop app)
+**Website:** market-midas.vercel.app
 
-## 3. Agent Team Structure (Antigravity Specific)
-To maximize Opus 4.6’s capabilities, the system will use the **Agent Teams** feature to parallelize work [5][6][7]. The Team Lead (you/main agent) will coordinate the following sub-agents:
+Market Midas is a local-first AI-powered trading assistant. It combines technical analysis with AI-driven debate agents to generate trade signals, and uses Playwright browser automation for Robinhood order execution. The app runs entirely on the user's Mac — all positions, alerts, and settings are stored locally.
 
-1.  **The Analyst (Tech-Agent):**
-    *   *Role:* Responsible for fetching OHLCV (Open, High, Low, Close, Volume) data and calculating technical indicators (RSI, MACD, Bollinger Bands) using Python.
-    *   *Tooling:* Python Terminal, FileSystem.
-2.  **The Researcher (Sentiment-Agent):**
-    *   *Role:* Uses Opus 4.6's "extended thinking" to browse news and earnings transcripts. Scores market sentiment from -1 (Bearish) to +1 (Bullish).
-    *   *Context:* Leverages the 1M token window to ingest full 10-K reports if necessary [3].
-3.  **The Trader (Execution-Agent):**
-    *   *Role:* Manages the Antigravity Browser to log in to Robinhood, verify account balance, and stage orders.
-    *   *Constraint:* Must operate strictly under "Human-in-the-Loop" protocols for final execution [8].
+---
 
-## 4. Functional Requirements
+## 2. Core Value Proposition
 
-### 4.1 Data Ingestion & Integrity (ALCOA+)
-*   **Requirement:** System must fetch historical data for a user-defined watchlist (e.g., SPY, NVDA, TSLA).
-*   **Standard:** Apply **ALCOA+ principles** (Attributable, Legible, Contemporaneous, Original, Accurate) to data handling [9].
-    *   *Implementation:* All data fetches must be logged with timestamps to ensure model decisions are traceable.
-    *   *Action:* Write a Python script using `yfinance` to pull 6 months of daily data and store it in a `data/raw` directory (preserving the "Original" record).
+1. **AI-powered analysis** — Bull and Bear agents debate a stock using real technical data, powered by LiteLLM (supports OpenAI, Anthropic, Google)
+2. **Human-in-the-loop execution** — Playwright automates Robinhood but requires explicit user confirmation before submitting any order
+3. **Paper + Live modes** — practice with simulated money before risking real capital
+4. **Local-first** — no cloud dependency for trading logic. Auth gates access but data stays on device.
 
-### 4.2 The Strategy Engine (Logic)
-*   **Technical Logic:**
-    *   Calculate a 50-day and 200-day Simple Moving Average (SMA).
-    *   Identify "Golden Cross" (50 SMA > 200 SMA) or "Death Cross" events.
-    *   Calculate RSI (Relative Strength Index). Buy signal if RSI < 30 (Oversold); Sell if RSI > 70 (Overbought).
-*   **Sentiment Logic:**
-    *   Ingest recent news headlines for the target ticker.
-    *   Opus 4.6 must reason through the headlines to determine if a price drop is a "panic sell" (Buy opportunity) or a "fundamental failure" (Avoid).
-*   **Decision Output:** The system must output a JSON artifact containing: `{Ticker, Action (BUY/SELL/HOLD), Confidence_Score, Reasoning}`.
+---
 
-### 4.3 Risk Management
-*   **Position Sizing:** Never allocate more than 5% of total account value to a single trade.
-*   **Stop Loss:** Automatically calculate a stop-loss price at 5% below the entry price.
-*   **Validation:** Implementation of a **Unit Test** suite to verify that buy signals are not generated if the account balance is insufficient [10].
+## 3. Tech Stack
 
-### 4.4 Execution (Antigravity Browser)
-*   **Requirement:** The agent must be able to navigate the Robinhood web UI using the Antigravity internal browser [11].
-*   **Workflow:**
-    1.  Agent launches the internal Antigravity Browser.
-    2.  Navigates to the stock detail page.
-    3.  Inputs the dollar amount or share quantity.
-    4.  **Constraint:** The agent must *pause* and request human approval via an **Artifact** (Screenshot/Walkthrough) before clicking the final "Review Order" or "Submit" button [12].
+| Layer | Technology |
+|-------|-----------|
+| Shell | Tauri 2.0 |
+| Frontend | Next.js 14, TypeScript, Tailwind CSS |
+| Backend | Python 3.12+ FastAPI (port 8000) |
+| AI | LiteLLM (multi-provider abstraction) |
+| Execution | Playwright (Robinhood browser automation) |
+| Auth | JWT token from market-midas.vercel.app |
+| Config | Local JSON files (settings.json, logs/) |
 
-## 5. Implementation Roadmap for Opus 4.6
+---
 
-**Phase 1: Project Scaffolding & Context**
-*   *Prompt:* "Read @prd.md. Initialize the project with a `CLAUDE.md` file to store project context and coding standards [13]. Create directories for `src/`, `data/`, `logs/`, and a `requirements.txt`."
+## 4. Auth & Account Model
 
-**Phase 2: The Logic Core (Analyst Agent)**
-*   *Prompt:* "Spawn an Analyst agent. Write a Python function `analyze_stock(ticker)` that pulls data, calculates RSI and SMA-50/200. Return a pandas DataFrame. Ensure code follows PEP-8."
+- Users create accounts on market-midas.vercel.app (marketing site)
+- App validates credentials against the website's auth API on launch
+- Token stored locally after successful login — stays logged in until explicit sign out
+- No cloud sync of trading data (positions, alerts, settings stay local)
+- Multi-device: logging in on a new device starts fresh — no data sync (post-launch roadmap)
+- New account flow: login → onboarding → main app
+- Returning account flow: login (if token expired) → main app
 
-**Phase 3: The Integration (Trader Agent)**
-*   *Prompt:* "Spawn a Trader agent. Create an Antigravity browser automation script. Goal: Log in to Robinhood (wait for me to handle 2FA), navigate to a stock page, and verify you can read the current price from the DOM. **Do not execute trades.**"
+---
 
-**Phase 4: Backtesting & Verification**
-*   *Prompt:* "Create a backtesting script that runs our strategy against the last 1 year of data [14]. Generate a report Artifact showing 'Win Rate' and 'Max Drawdown'."
+## 5. AI Integration (LiteLLM)
 
-## 6. Success Metrics & Artifacts
-*   **Artifact 1:** `strategy_report.md` - Daily report summarizing market conditions and trade recommendations.
-*   **Artifact 2:** `backtest_results.csv` - Historical profitability proof.
-*   **Artifact 3:** `trade_log.json` - A contemporaneous log of all bot actions for audit purposes.
+The app uses LiteLLM as a unified interface to multiple AI providers. This means users can connect their own API key from any supported provider.
 
-***
+**Supported providers:**
+- OpenAI (default model: gpt-4o)
+- Anthropic (default model: claude-sonnet-4-20250514)
+- Google (default model: gemini-2.0-flash)
+
+**How it works:**
+- User selects provider and enters API key in Settings
+- Key stored in `config/settings.json` (local only, never transmitted to our servers)
+- Python backend reads provider/key/model from settings.json on each request
+- LiteLLM handles the provider-specific API calls transparently
+
+**AI components to be built:**
+1. `src/agents/analyst.py` — replace rule-based template strings with real LLM calls for stock analysis summary
+2. `src/strategy/debate.py` — replace if/else logic with real multi-turn Bull/Bear conversation
+
+---
+
+## 6. Trading Modes
+
+**Paper Mode:**
+- Simulated money, real market data
+- Starting balance set during onboarding (default $100,000)
+- Balance stored in settings.json `walletBalance`
+- Trades logged to `logs/paper_trades.json`
+- No Robinhood connection required
+
+**Live Mode:**
+- Real Robinhood account
+- Buying power scraped via Playwright on trade execution
+- Buying power stored in settings.json with timestamp
+- Full Playwright automation with human confirmation step
+
+---
+
+## 7. Screen Map
+
+| Screen | Route | Description |
+|--------|-------|-------------|
+| Login | `/login` | Auth gate, shown if no valid token |
+| Onboarding | `/onboarding` | First-run setup, 4 steps |
+| Analyze | `/` | Home screen, ticker analysis |
+| Debate | `/debate` | Bull vs Bear AI debate |
+| Trade | `/trade` | Order review and execution |
+| Positions | `/positions` | Portfolio tracker with donut chart |
+| Settings | `/settings` | Provider, mode, risk controls |
+| Paper Wallet | `/paper-wallet` | → redirects to /positions |
+| Alerts | `/alerts` | → redirects to /positions |
+
+---
+
+## 8. Alert System
+
+- Alerts stored in `logs/user_alerts.json`
+- Python `alert_engine.py` monitors prices and triggers alerts
+- Types: stop_loss (%), price_target ($)
+- Global bell icon in title bar — gold dot when triggered
+- Alerts panel slides in from right with full-screen blur backdrop
+- 36/36 backend tests passing
+
+---
+
+## 9. Risk Controls
+
+- Max position: 5% of total account value per trade (configurable)
+- Stop loss: automatic at user-defined % below entry (default 5%)
+- Max daily drawdown: configurable (default 5%)
+- Human confirmation required before every live order submission
+
+---
+
+## 10. Data & Config Files
+
+| File | Purpose |
+|------|---------|
+| `config/settings.json` | All user preferences + AI config |
+| `logs/paper_trades.json` | Paper trade ledger |
+| `logs/user_alerts.json` | Custom price alerts |
+| `logs/alert_log.json` | Alert engine audit log |
+| `data/raw/` | Immutable OHLCV data (ALCOA+) |
+
+---
+
+## 11. Build Phases
+
+**Completed:**
+- Tauri native shell + macOS window ergonomics
+- Analyze screen (empty, loading, results states)
+- Debate session (streaming, conviction meters, verdict)
+- Trade execution (paper + live, 3 states)
+- Positions screen (donut chart, master/detail, close position)
+- Alerts backend (alert_engine.py, 36/36 tests)
+- Global alerts panel + Add Alert modal
+- Bell icon in title bar
+
+**In Progress (F-2):**
+- Settings screen (provider selector, API key, risk controls)
+- Onboarding flow (4 steps)
+- Price refresh on Positions (30s polling)
+- Buying power auto-fill on Order Review
+- Login screen
+
+**Pending:**
+- LiteLLM integration (replace analyst.py + debate.py)
+- Marketing website auth backend
+- App login screen connecting to website auth
+
+**Post-Launch Roadmap:**
+- Cloud sync for positions and alerts
+- Multi-device support
+- Additional broker support beyond Robinhood
+
+---
+
+## 12. Success Metrics
+
+- User completes onboarding and first paper trade in < 5 minutes
+- Analysis + debate completes in < 30 seconds
+- Zero crashes during trade execution flow
+- Alert triggers within 60 seconds of price threshold breach

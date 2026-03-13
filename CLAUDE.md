@@ -1,68 +1,135 @@
-# Market-Midas — Project Context & Coding Standards
+# Market Midas — Project Context & Coding Standards
 
 ## Overview
-Market-Midas is an automated trading assistant that identifies high-probability swing trade opportunities on Robinhood. It combines quantitative technical analysis (Python) with qualitative sentiment analysis (Claude Opus 4.6) to generate trade signals, using Google Antigravity's browser agents for execution.
+Market Midas is a native macOS trading terminal built with Tauri 2.0, Next.js 14, and a Python FastAPI backend. It combines rule-based technical analysis with AI-powered debate agents (via LiteLLM) to generate trade signals, and uses Playwright browser automation for Robinhood order execution.
+
+The app is local-first. All data (positions, alerts, settings) lives on the user's machine. Auth is handled via the marketing website at market-midas.vercel.app — the app validates a stored token on launch and requires login before use.
+
+## Tech Stack
+- **Shell:** Tauri 2.0 (native macOS window, traffic lights, drag region)
+- **Frontend:** Next.js 14 (App Router), TypeScript, Tailwind CSS
+- **Backend:** Python 3.12+ FastAPI (port 8000)
+- **Frontend Dev Server:** Next.js (port 3001)
+- **AI Layer:** LiteLLM (multi-provider: OpenAI, Anthropic, Google)
+- **Execution:** Playwright (Robinhood browser automation)
+- **Design System:** MMDesign.md + MMAppDesign.md (single source of truth)
 
 ## Architecture
-- **Platform:** Google Antigravity IDE
-- **Intelligence:** Claude Opus 4.6 (High/Max effort, 1M token context)
-- **Language:** Python 3.12+
-- **Brokerage:** Robinhood (web interface via Antigravity Browser Agent)
+```
+Tauri Shell
+  └── Next.js Frontend (port 3001)
+        ├── src/app/                  # Page routes
+        ├── src/app/api/              # Next.js API routes (thin proxies to Python — DO NOT MODIFY)
+        ├── src/components/           # Shared UI components
+        ├── src/context/AppContext.tsx # Global state (mode, alerts, preferences)
+        └── src/hooks/                # Extracted logic hooks (DO NOT MODIFY)
+  └── Python FastAPI Backend (port 8000)
+        ├── src/server.py             # Main FastAPI app
+        ├── src/agents/analyst.py     # Technical analysis (to be replaced with LiteLLM calls)
+        ├── src/strategy/debate.py    # Bull/Bear debate (to be replaced with LiteLLM calls)
+        └── src/alert_engine.py       # Alert monitoring (36/36 tests passing)
+```
 
-## Agent Team
-| Agent | Role | Responsibilities |
-|-------|------|-----------------|
-| **Analyst** (Tech-Agent) | Technical Analysis | Fetch OHLCV data, calculate RSI, MACD, Bollinger Bands, SMA-50/200 |
-| **Researcher** (Sentiment-Agent) | Sentiment Analysis | Browse news/earnings, score sentiment -1 (Bearish) to +1 (Bullish) |
-| **Trader** (Execution-Agent) | Order Execution | Navigate Robinhood UI, stage orders, enforce human-in-the-loop |
+## Routing Map (Current)
+| Route | Screen |
+|-------|--------|
+| `/` | Analyze (home screen) |
+| `/debate` | Debate Session |
+| `/trade` | Trade Execution |
+| `/positions` | Positions + Trade Tracker |
+| `/settings` | Settings |
+| `/onboarding` | First-run setup (runs once) |
+| `/paper-wallet` | → redirects to /positions |
+| `/alerts` | → redirects to /positions |
 
-## Coding Standards
-- **Style:** PEP-8 strict. All functions must have type hints and docstrings.
-- **Imports:** stdlib → third-party → local, separated by blank lines.
-- **Naming:** `snake_case` for functions/variables, `PascalCase` for classes.
-- **Error Handling:** Never silently swallow exceptions. Log all errors.
-- **Testing:** `pytest` for all unit tests. Tests live in `tests/`.
+## Global State (AppContext)
+AppContext holds and exposes:
+- `mode`: 'paper' | 'live'
+- `preferences`: UserPreferences from settings.json
+- `alerts`: Alert[] — single source of truth for all alert data
+- `fetchAlerts()`: refreshes alerts array from backend
+- `isLoading`: boolean
 
-## Data Handling (ALCOA+)
-All data operations must follow ALCOA+ principles:
-- **Attributable:** Every data fetch logged with source and timestamp.
-- **Legible:** Raw data stored as clean CSVs in `data/raw/`.
-- **Contemporaneous:** Timestamps recorded at time of fetch, not retroactively.
-- **Original:** Raw data in `data/raw/` is immutable — never overwrite.
-- **Accurate:** Validate data integrity after each fetch (no NaN rows, correct date ranges).
+No component fetches alerts independently. All alert reads come from AppContext.
 
-## Decision Output Format
-All trade signals must follow this JSON schema:
+## Settings File (config/settings.json)
+This is the single config file. Shape:
 ```json
 {
-  "ticker": "NVDA",
-  "action": "BUY | SELL | HOLD",
-  "confidence_score": 0.85,
-  "reasoning": "Golden Cross detected with RSI at 28 (oversold). Sentiment +0.7 (bullish earnings).",
-  "timestamp": "2026-02-16T22:12:00Z",
-  "stop_loss": 120.50,
-  "position_size_pct": 4.5
+  "provider": "openai",
+  "apiKey": "sk-...",
+  "model": "gpt-4o",
+  "walletBalance": 100000.0,
+  "defaultTradeSize": 1000.0,
+  "alertThreshold": 5.0,
+  "maxDailyDrawdown": 5.0,
+  "stopLossThreshold": 5.0,
+  "mode": "paper",
+  "onboardingComplete": false
 }
 ```
 
-## Risk Constraints
-- **Max position:** 5% of total account value per trade.
-- **Stop-loss:** Automatic at 5% below entry price.
-- **Execution:** Human approval required before every order submission.
+## Alert System
+- Schema: `{ id, ticker, type, threshold, thresholdPrice, entryPrice, active, triggered, createdAt }`
+- Backend: `src/alert_engine.py` — Python is source of truth
+- API: GET/POST `/alerts`, PATCH/DELETE `/alerts/{id}`
+- Frontend proxy: `src/app/api/alerts/route.ts` (do not modify)
+- Storage: `logs/user_alerts.json` (atomic writes via .tmp + os.replace)
+
+## Global UI Events (window.dispatchEvent)
+| Event | Behavior |
+|-------|----------|
+| `toggle-alerts-panel` | Opens OR closes the alerts panel (bell icon only) |
+| `open-alerts-panel` | Always opens the panel, never closes |
+| `open-alert-modal` | Opens Add Alert modal, accepts `{ detail: { ticker } }` |
+
+## Auth Pattern
+- Login screen shown on app launch if no valid token stored
+- Token stored locally after successful auth against market-midas.vercel.app
+- Stays logged in until user explicitly signs out
+- New account → onboarding flow → main app
+- Returning account → main app directly
+
+## Buying Power
+- Paper mode: reads `walletBalance` from settings.json
+- Live mode: scraped from Robinhood via Playwright on trade execution, stored with timestamp
+- Freshness tiers: green (today), gold (≤7 days), red (>7 days)
+
+## Coding Standards
+- **Style:** PEP-8 strict for Python. TypeScript strict mode.
+- **Imports:** stdlib → third-party → local.
+- **Naming:** `snake_case` Python, `camelCase`/`PascalCase` TypeScript.
+- **Error Handling:** Never silently swallow exceptions. Log all errors.
+- **Testing:** pytest for Python. Tests in `tests/`.
+
+## CRITICAL RULES — Read Before Every Task
+1. **NEVER modify** `src/app/api/` routes or `src/hooks/` — these are locked
+2. **Always read** MMDesign.md and MMAppDesign.md before writing any UI code
+3. **No Inter/Roboto/system fonts** — only Jost (sans) and Bodoni Moda (serif)
+4. **No spinners** — use sequential step indicators for loading states
+5. **No purple gradients** — palette is strictly charcoal/gold/alabaster
+6. **Run** `npx tsc --noEmit` after every task — zero errors required
+7. **Delete all existing JSX** before rebuilding a screen — never patch over old code
 
 ## Directory Structure
 ```
 Market-Midas/
-├── src/agents/       # Agent team (analyst, researcher, trader)
-├── src/strategy/     # Strategy decision engine
-├── src/risk/         # Risk management
-├── src/data/         # Data ingestion & validation
-├── data/raw/         # Immutable original OHLCV data
-├── logs/             # Trade logs & audit trail
-└── tests/            # pytest test suite
+├── frontend/
+│   ├── src/app/              # Next.js pages and API routes
+│   ├── src/components/       # UI components
+│   ├── src/context/          # AppContext
+│   ├── src/hooks/            # Logic hooks (locked)
+│   └── src-tauri/            # Tauri config
+├── src/
+│   ├── agents/               # analyst.py (LiteLLM integration pending)
+│   ├── strategy/             # debate.py (LiteLLM integration pending)
+│   ├── alert_engine.py       # Alert monitoring
+│   └── server.py             # FastAPI
+├── config/
+│   └── settings.json         # User config
+├── logs/
+│   ├── paper_trades.json     # Trade ledger
+│   ├── alert_log.json        # Alert state
+│   └── user_alerts.json      # Custom alerts
+└── tests/                    # pytest suite
 ```
-
-## Logging Convention
-- Use Python `logging` module, not `print()`.
-- Log level: `INFO` for routine ops, `WARNING` for anomalies, `ERROR` for failures.
-- All logs written to `logs/` with ISO-8601 timestamps.
