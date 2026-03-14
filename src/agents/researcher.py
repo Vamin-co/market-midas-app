@@ -180,16 +180,34 @@ class ResearcherAgent:
         """Fetch headlines from Google News RSS."""
         query = quote_plus(f"{ticker} stock")
         url = f"https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en"
-        return self._parse_rss(url, source="Google News")
+        return self._parse_rss(url, default_source="Google News")
 
     def _fetch_yahoo_finance(self, ticker: str) -> list[Headline]:
         """Fetch headlines from Yahoo Finance RSS."""
         url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US"
-        return self._parse_rss(url, source="Yahoo Finance")
+        return self._parse_rss(url, default_source="Yahoo Finance")
 
-    def _parse_rss(self, url: str, source: str) -> list[Headline]:
-        """Parse an RSS feed and extract headlines."""
+    def _parse_rss(self, url: str, default_source: str) -> list[Headline]:
+        """Parse an RSS feed and extract headlines.
+
+        Attempts to extract the real publisher name from each item:
+          - Google News RSS: uses the ``<source>`` element text.
+          - Yahoo Finance RSS: splits the title on ``": "`` to extract
+            the publisher prefix (e.g. ``"Reuters: …"`` → ``"Reuters"``).
+
+        Falls back to *default_source* when the publisher cannot be
+        determined from the feed item.
+
+        Args:
+            url: RSS feed URL.
+            default_source: Fallback source label (e.g. ``"Google News"``).
+
+        Returns:
+            List of Headline objects (sentiment not yet classified).
+        """
         headlines: list[Headline] = []
+        is_yahoo = "yahoo" in url.lower()
+
         try:
             resp = self._session.get(url, timeout=10)
             resp.raise_for_status()
@@ -200,23 +218,42 @@ class ResearcherAgent:
                 title_el = item.find("title")
                 link_el = item.find("link")
                 pub_el = item.find("pubDate")
+                source_el = item.find("source")
 
-                if title_el is not None and title_el.text:
-                    headlines.append(Headline(
-                        title=title_el.text.strip(),
-                        source=source,
-                        url=link_el.text.strip() if link_el is not None and link_el.text else "",
-                        sentiment="neutral",  # classified later
-                        published=pub_el.text.strip() if pub_el is not None and pub_el.text else "",
-                    ))
+                if title_el is None or not title_el.text:
+                    continue
+
+                raw_title = title_el.text.strip()
+                item_source = default_source
+
+                if is_yahoo:
+                    # Yahoo Finance titles often have "Publisher: Headline"
+                    if ": " in raw_title:
+                        prefix, remainder = raw_title.split(": ", 1)
+                        # Only treat as publisher if the prefix is short
+                        # (avoids splitting on colons within headlines)
+                        if len(prefix) <= 40 and remainder:
+                            item_source = prefix.strip()
+                            raw_title = remainder.strip()
+                elif source_el is not None and source_el.text:
+                    # Google News RSS includes <source url="...">Publisher</source>
+                    item_source = source_el.text.strip()
+
+                headlines.append(Headline(
+                    title=raw_title,
+                    source=item_source,
+                    url=link_el.text.strip() if link_el is not None and link_el.text else "",
+                    sentiment="neutral",  # classified later
+                    published=pub_el.text.strip() if pub_el is not None and pub_el.text else "",
+                ))
 
             # Limit to 15 most recent per source
             headlines = headlines[:15]
 
         except requests.RequestException as e:
-            logger.warning("Failed to fetch %s RSS: %s", source, e)
+            logger.warning("Failed to fetch %s RSS: %s", default_source, e)
         except ET.ParseError as e:
-            logger.warning("Failed to parse %s RSS XML: %s", source, e)
+            logger.warning("Failed to parse %s RSS XML: %s", default_source, e)
 
         return headlines
 

@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import yfinance as yf
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -46,6 +47,72 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
+
+
+def _fetch_quant_data(ticker: str, current_price: float) -> dict[str, Any]:
+    """Fetch supplementary quant data from yfinance for the frontend.
+
+    All fields are extracted defensively — if yfinance returns ``None`` or
+    raises, the corresponding field is set to ``None`` rather than crashing.
+
+    Args:
+        ticker: Stock ticker symbol (e.g. ``"NVDA"``).
+        current_price: Current closing price from the analyst dataframe.
+
+    Returns:
+        Dict with keys: ``daily_change_percent``, ``fifty_two_week_high``,
+        ``fifty_two_week_low``, ``volume_24h``, ``avg_volume_10d``,
+        ``market_cap``, ``next_earnings_date``.
+    """
+    quant: dict[str, Any] = {
+        "daily_change_percent": None,
+        "fifty_two_week_high": None,
+        "fifty_two_week_low": None,
+        "volume_24h": None,
+        "avg_volume_10d": None,
+        "market_cap": None,
+        "next_earnings_date": None,
+    }
+
+    try:
+        info = yf.Ticker(ticker).info
+        if not info:
+            return quant
+
+        # daily_change_percent
+        prev_close = info.get("previousClose")
+        if prev_close and prev_close > 0 and current_price:
+            quant["daily_change_percent"] = round(
+                ((current_price - prev_close) / prev_close) * 100, 4
+            )
+
+        quant["fifty_two_week_high"] = info.get("fiftyTwoWeekHigh")
+        quant["fifty_two_week_low"] = info.get("fiftyTwoWeekLow")
+        quant["volume_24h"] = info.get("volume")
+        quant["avg_volume_10d"] = info.get("averageVolume10days")
+        quant["market_cap"] = info.get("marketCap")
+
+        # next_earnings_date — may be a list, datetime, or int timestamp
+        raw_earnings = info.get("earningsDate")
+        if raw_earnings is not None:
+            from datetime import datetime as _dt
+
+            if isinstance(raw_earnings, list) and len(raw_earnings) > 0:
+                raw_earnings = raw_earnings[0]
+            if isinstance(raw_earnings, (int, float)):
+                quant["next_earnings_date"] = _dt.fromtimestamp(
+                    raw_earnings
+                ).strftime("%Y-%m-%d")
+            elif hasattr(raw_earnings, "strftime"):
+                quant["next_earnings_date"] = raw_earnings.strftime("%Y-%m-%d")
+            elif isinstance(raw_earnings, str):
+                quant["next_earnings_date"] = raw_earnings[:10]
+
+    except Exception as exc:
+        logger.warning("yfinance quant fetch failed for %s: %s", ticker, exc)
+
+    return quant
+
 
 # Simulated portfolio state
 PORTFOLIO: dict[str, Any] = {
@@ -613,6 +680,18 @@ def run_daily_cycle(
     risk_position = risk_mgr.calculate_position_size(cash, current_price)
     risk_stop_loss = risk_mgr.calculate_stop_loss(current_price)
 
+    # Fetch supplementary quant data for the frontend
+    quant_data = _fetch_quant_data(ticker, current_price)
+
+    # Enhanced technicals — include fields already computed by the analyst
+    sma_200_val = latest.get("SMA_200", float("nan"))
+    golden_cross_val = bool(latest.get("golden_cross", False))
+    death_cross_val = bool(latest.get("death_cross", False))
+    sentiment_score_val = (
+        sentiment_context.get("composite_score", 0.0)
+        if sentiment_context else 0.0
+    )
+
     frontend_data = {
         "ticker": ticker,
         "confidence": confidence,
@@ -620,8 +699,13 @@ def run_daily_cycle(
         "technicals": {
             "rsi": rsi if pd.notna(rsi) else None,
             "sma_50": sma_50 if pd.notna(sma_50) else None,
-            "price": current_price
+            "sma_200": sma_200_val if pd.notna(sma_200_val) else None,
+            "price": current_price,
+            "golden_cross": golden_cross_val,
+            "death_cross": death_cross_val,
+            "sentiment_score": sentiment_score_val,
         },
+        "quant": quant_data,
         "sentiment": {
             "score": sentiment_context.get("composite_score", 0.0) if sentiment_context else 0.0,
             "sources": sentiment_sources

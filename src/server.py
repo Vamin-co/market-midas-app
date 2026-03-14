@@ -106,6 +106,8 @@ class UserSettings(BaseModel):
     maxDailyDrawdown: float = 5.0  # Percentage (e.g. 5 = 5%)
     stopLossThreshold: float = 5.0  # Phase 4: positive % (e.g. 8 = -8%)
     apiKey: str = ""
+    provider: str = "openai"
+    model: str = "gpt-5-mini"
 
 
 # ════════════════════════════════════════════════════════════════
@@ -119,6 +121,52 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "maxDailyDrawdown": 5.0,
     "stopLossThreshold": 5.0,
     "apiKey": "",
+    "provider": "openai",
+    "model": "gpt-5-mini",
+}
+
+
+# ── Provider / Model Reference Map ──
+PROVIDER_MODEL_MAP: dict[str, Any] = {
+    "openai": {
+        "label": "OpenAI",
+        "models": [
+            {"id": "gpt-5.4", "label": "GPT-5.4", "tier": "high"},
+            {"id": "gpt-5-mini", "label": "GPT-5 Mini", "tier": "mid"},
+            {"id": "gpt-5-nano", "label": "GPT-5 Nano", "tier": "low"},
+        ],
+    },
+    "anthropic": {
+        "label": "Anthropic",
+        "models": [
+            {"id": "claude-opus-4-6", "label": "Claude Opus 4.6", "tier": "high"},
+            {"id": "claude-sonnet-4-6", "label": "Claude Sonnet 4.6", "tier": "mid"},
+            {"id": "claude-haiku-4-5-20251001", "label": "Claude Haiku 4.5", "tier": "low"},
+        ],
+    },
+    "google": {
+        "label": "Google",
+        "models": [
+            {"id": "gemini-2.5-pro", "label": "Gemini 2.5 Pro", "tier": "high"},
+            {"id": "gemini-2.5-flash", "label": "Gemini 2.5 Flash", "tier": "mid"},
+            {"id": "gemini-2.5-flash-lite", "label": "Gemini 2.5 Flash Lite", "tier": "low"},
+        ],
+    },
+    "deepseek": {
+        "label": "DeepSeek",
+        "models": [
+            {"id": "deepseek-chat", "label": "DeepSeek V3.2", "tier": "low"},
+            {"id": "deepseek-reasoner", "label": "DeepSeek V3.2 Thinking", "tier": "low"},
+        ],
+    },
+    "xai": {
+        "label": "xAI / Grok",
+        "models": [
+            {"id": "grok-4-0709", "label": "Grok 4", "tier": "high"},
+            {"id": "grok-4-fast-reasoning", "label": "Grok 4 Fast", "tier": "low"},
+            {"id": "grok-3-mini", "label": "Grok 3 Mini", "tier": "low"},
+        ],
+    },
 }
 
 
@@ -193,6 +241,12 @@ def save_settings(new_settings: UserSettings):
             "apiKeySet": bool(merged.get("apiKey", "")),
         },
     }
+
+
+@app.get("/settings/providers")
+def get_providers() -> dict[str, Any]:
+    """Return the full provider/model reference map for the frontend."""
+    return {"providers": PROVIDER_MODEL_MAP}
 
 
 # ════════════════════════════════════════════════════════════════
