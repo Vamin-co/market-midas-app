@@ -49,6 +49,20 @@ export default function AnalyzePage() {
 function ResultsState({ runData, clearRunData }: { runData: any, clearRunData: () => void }) {
     const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
     const formatNumber = (val: number) => new Intl.NumberFormat('en-US', { notation: "compact", compactDisplay: "short" }).format(val);
+    const formatMarketCap = (val: number) => {
+        if (val >= 1_000_000_000_000) return `$${(val / 1_000_000_000_000).toFixed(1)}T`;
+        if (val >= 1_000_000_000) return `$${(val / 1_000_000_000).toFixed(1)}B`;
+        if (val >= 1_000_000) return `$${(val / 1_000_000).toFixed(1)}M`;
+        return `$${val}`;
+    };
+    const rsiVal: number | null = runData.technicals?.rsi ?? null;
+    const rsiChip = rsiVal !== null
+        ? rsiVal < 30
+            ? { label: 'OVERSOLD', bg: 'bg-[#27c93f]/10', text: 'text-[#27c93f]' }
+            : rsiVal > 70
+                ? { label: 'OVERBOUGHT', bg: 'bg-[#ff5f56]/10', text: 'text-[#ff5f56]' }
+                : { label: 'NEUTRAL', bg: 'bg-[#1C1917]/8', text: 'text-[#44403C]/60' }
+        : null;
 
     const action = runData.status?.action || 'HOLD';
     const isBuy = action === 'BUY';
@@ -83,6 +97,9 @@ function ResultsState({ runData, clearRunData }: { runData: any, clearRunData: (
                             </span>
                             <span className="text-[#1C1917]/30">|</span>
                             <span className="text-[#1C1917]/60">52W: {formatCurrency(runData.quant?.fifty_two_week_low || 0)} - {formatCurrency(runData.quant?.fifty_two_week_high || 0)}</span>
+                            {runData.quant?.market_cap != null && (
+                                <><span className="text-[#1C1917]/30">|</span><span className="text-[#1C1917]/60">Mkt Cap {formatMarketCap(runData.quant.market_cap)}</span></>
+                            )}
                         </div>
                     </div>
 
@@ -90,7 +107,18 @@ function ResultsState({ runData, clearRunData }: { runData: any, clearRunData: (
                         <div>
                             <div className="flex justify-between text-[10px] font-sans font-bold uppercase tracking-widest text-[#1C1917]/50 mb-1">
                                 <span>SMA 50</span>
-                                <span>{formatCurrency(runData.technicals?.sma_50 || 0)}</span>
+                                <span className="flex items-center gap-0">
+                                    {formatCurrency(runData.technicals?.sma_50 || 0)}
+                                    {runData.technicals?.sma_50 != null && (
+                                        <span className={`text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ml-2 ${
+                                            (runData.technicals?.price || 0) > runData.technicals.sma_50
+                                                ? 'bg-[#27c93f]/10 text-[#27c93f]'
+                                                : 'bg-[#ff5f56]/10 text-[#ff5f56]'
+                                        }`}>
+                                            {(runData.technicals?.price || 0) > runData.technicals.sma_50 ? '↑ ABOVE' : '↓ BELOW'}
+                                        </span>
+                                    )}
+                                </span>
                             </div>
                             <div className="w-full h-1 bg-[#1C1917]/10 rounded-full overflow-hidden relative">
                                 {/* Indicator visually showing if price is above or below sma */}
@@ -98,6 +126,35 @@ function ResultsState({ runData, clearRunData }: { runData: any, clearRunData: (
                                 <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-[#1C1917] -ml-[1px]" />
                             </div>
                         </div>
+                        {/* RSI Row */}
+                        {rsiVal !== null && rsiChip && (
+                            <div className="flex justify-between items-center">
+                                <span className="text-[9px] font-sans font-bold uppercase tracking-widest text-[#44403C]/50 cursor-default" title="Relative Strength Index. Below 30 = oversold (potential buy signal). Above 70 = overbought (potential sell signal).">
+                                    RSI
+                                </span>
+                                <span className="flex items-center">
+                                    <span className="text-sm font-sans text-[#1C1917]">{rsiVal.toFixed(2)}</span>
+                                    <span className={`text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ml-2 ${rsiChip.bg} ${rsiChip.text}`}>
+                                        {rsiChip.label}
+                                    </span>
+                                </span>
+                            </div>
+                        )}
+                        {/* Golden / Death Cross Pill */}
+                        {runData.technicals?.golden_cross === true && (
+                            <div>
+                                <span className="inline-block text-[9px] font-bold uppercase tracking-widest px-3 py-1 rounded-full bg-[#27c93f]/10 text-[#27c93f] border border-[#27c93f]/20">
+                                    ✦ GOLDEN CROSS
+                                </span>
+                            </div>
+                        )}
+                        {runData.technicals?.death_cross === true && (
+                            <div>
+                                <span className="inline-block text-[9px] font-bold uppercase tracking-widest px-3 py-1 rounded-full bg-[#ff5f56]/10 text-[#ff5f56] border border-[#ff5f56]/20">
+                                    ✦ DEATH CROSS
+                                </span>
+                            </div>
+                        )}
                         <div>
                             <div className="flex gap-4 text-[10px] font-sans font-bold uppercase tracking-widest text-[#1C1917]/50">
                                 <div>Vol 24H: <span className="text-[#1C1917]/80">{formatNumber(runData.quant?.volume_24h || 0)}</span></div>
