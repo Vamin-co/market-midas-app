@@ -120,6 +120,9 @@ export interface UserPreferences {
     stopLossThreshold: number;
     apiKey: string;
     apiKeySet: boolean;
+    provider: string;
+    model: string;
+    mode: 'paper' | 'live';
 }
 
 const DEFAULT_PREFERENCES: UserPreferences = {
@@ -130,6 +133,9 @@ const DEFAULT_PREFERENCES: UserPreferences = {
     stopLossThreshold: 5,
     apiKey: "",
     apiKeySet: false,
+    provider: "openai",
+    model: "gpt-5-mini",
+    mode: "paper",
 };
 
 // ════════════════════════════════════════════════════════════════
@@ -207,6 +213,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
                     stopLossThreshold: data.stopLossThreshold ?? DEFAULT_PREFERENCES.stopLossThreshold,
                     apiKey: data.apiKey ?? "",
                     apiKeySet: data.apiKeySet ?? false,
+                    provider: data.provider ?? DEFAULT_PREFERENCES.provider,
+                    model: data.model ?? DEFAULT_PREFERENCES.model,
+                    mode: data.mode === 'live' ? 'live' : 'paper',
                 });
             }
         } catch (err) {
@@ -224,6 +233,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 maxDailyDrawdown: prefs.maxDailyDrawdown ?? userPreferences.maxDailyDrawdown,
                 stopLossThreshold: prefs.stopLossThreshold ?? userPreferences.stopLossThreshold,
                 apiKey: prefs.apiKey ?? userPreferences.apiKey,
+                provider: prefs.provider ?? userPreferences.provider,
+                model: prefs.model ?? userPreferences.model,
+                mode: prefs.mode ?? userPreferences.mode,
             };
             const res = await fetch(`${BACKEND_URL}/settings`, {
                 method: "POST",

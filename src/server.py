@@ -108,6 +108,7 @@ class UserSettings(BaseModel):
     apiKey: str = ""
     provider: str = "openai"
     model: str = "gpt-5-mini"
+    mode: str = "paper"
 
 
 # ════════════════════════════════════════════════════════════════
