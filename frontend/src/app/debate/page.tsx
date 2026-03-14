@@ -69,11 +69,18 @@ export default function DebatePage() {
 
                     {(!isGenerating && !isBullStreaming && bullStreamedText.length > 0) && (
                         <div className="flex flex-wrap gap-2 mt-6 animate-in fade-in duration-500">
-                            {sources.map((src: any, idx: number) => (
-                                <span key={`bull-src-${idx}`} className="text-[10px] bg-[#1C1917]/5 border border-[#1C1917]/10 rounded-full px-3 py-1 text-[#44403C] uppercase tracking-widest">
-                                    {src.source}
-                                </span>
-                            ))}
+                            {sources.map((src: any, idx: number) => {
+                                const pillClass = "text-[10px] bg-[#1C1917]/5 border border-[#1C1917]/10 rounded-full px-3 py-1 text-[#44403C] uppercase tracking-widest";
+                                return src.url ? (
+                                    <a key={`bull-src-${idx}`} href={src.url} target="_blank" rel="noopener noreferrer" className={`${pillClass} cursor-pointer hover:underline`}>
+                                        {src.source}
+                                    </a>
+                                ) : (
+                                    <span key={`bull-src-${idx}`} className={pillClass}>
+                                        {src.source}
+                                    </span>
+                                );
+                            })}
                         </div>
                     )}
                 </div>
@@ -109,11 +116,18 @@ export default function DebatePage() {
 
                     {(!isGenerating && !isBullStreaming && !isBearStreaming && bearStreamedText.length > 0) && (
                         <div className="flex flex-wrap gap-2 mt-6 animate-in fade-in duration-500">
-                            {sources.map((src: any, idx: number) => (
-                                <span key={`bear-src-${idx}`} className="text-[10px] bg-[#1C1917]/5 border border-[#1C1917]/10 rounded-full px-3 py-1 text-[#44403C] uppercase tracking-widest">
-                                    {src.source}
-                                </span>
-                            ))}
+                            {sources.map((src: any, idx: number) => {
+                                const pillClass = "text-[10px] bg-[#1C1917]/5 border border-[#1C1917]/10 rounded-full px-3 py-1 text-[#44403C] uppercase tracking-widest";
+                                return src.url ? (
+                                    <a key={`bear-src-${idx}`} href={src.url} target="_blank" rel="noopener noreferrer" className={`${pillClass} cursor-pointer hover:underline`}>
+                                        {src.source}
+                                    </a>
+                                ) : (
+                                    <span key={`bear-src-${idx}`} className={pillClass}>
+                                        {src.source}
+                                    </span>
+                                );
+                            })}
                         </div>
                     )}
                 </div>

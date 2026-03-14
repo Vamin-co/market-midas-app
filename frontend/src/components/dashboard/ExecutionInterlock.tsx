@@ -424,7 +424,7 @@ export const ExecutionInterlock: React.FC<ExecutionInterlockProps> = ({ ticker, 
 
                 <div className="flex items-center gap-6 mt-4 animate-in fade-in duration-500 delay-500 fill-mode-both">
                     <Link
-                        href="/dashboard"
+                        href="/positions"
                         className="text-[#1C1917] border border-[#1C1917]/20 px-6 py-2 rounded-full text-xs font-sans uppercase tracking-widest hover:bg-[#1C1917]/5 transition-colors"
                     >
                         View Positions
