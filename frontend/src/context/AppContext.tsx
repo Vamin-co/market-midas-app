@@ -205,6 +205,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             const res = await fetch(`${BACKEND_URL}/settings`);
             if (res.ok) {
                 const data = await res.json();
+                const modeValue = data.mode === 'live' ? 'live' : 'paper';
                 setUserPreferences({
                     walletBalance: data.walletBalance ?? DEFAULT_PREFERENCES.walletBalance,
                     defaultTradeSize: data.defaultTradeSize ?? DEFAULT_PREFERENCES.defaultTradeSize,
@@ -215,8 +216,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
                     apiKeySet: data.apiKeySet ?? false,
                     provider: data.provider ?? DEFAULT_PREFERENCES.provider,
                     model: data.model ?? DEFAULT_PREFERENCES.model,
-                    mode: data.mode === 'live' ? 'live' : 'paper',
+                    mode: modeValue,
                 });
+                setExecutionMode(modeValue === 'live' ? 'LIVE' : 'PAPER');
             }
         } catch (err) {
             console.error("Failed to fetch settings:", err);
