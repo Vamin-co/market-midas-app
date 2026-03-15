@@ -100,15 +100,15 @@ class ExecutionRequest(BaseModel):
 
 
 class UserSettings(BaseModel):
-    walletBalance: float = 100_000.0
-    defaultTradeSize: float = 1_000.0
-    alertThreshold: float = 5.0
-    maxDailyDrawdown: float = 5.0  # Percentage (e.g. 5 = 5%)
-    stopLossThreshold: float = 5.0  # Phase 4: positive % (e.g. 8 = -8%)
-    apiKey: str = ""
-    provider: str = "openai"
-    model: str = "gpt-5-mini"
-    mode: str = "paper"
+    walletBalance: Optional[float] = None
+    defaultTradeSize: Optional[float] = None
+    alertThreshold: Optional[float] = None
+    maxDailyDrawdown: Optional[float] = None
+    stopLossThreshold: Optional[float] = None
+    apiKey: Optional[str] = None
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    mode: Optional[str] = None
 
 
 # ════════════════════════════════════════════════════════════════
@@ -214,24 +214,28 @@ def save_settings(new_settings: UserSettings):
     """Save user settings to config/settings.json."""
     current = _read_settings()
 
+    # Only include fields that were explicitly sent (not None)
+    update = {k: v for k, v in new_settings.model_dump().items() if v is not None}
+
     # Only update apiKey if the user actually provided a new one
     # (not the masked display value)
-    update = new_settings.model_dump()
-    if update["apiKey"].startswith("••••") or update["apiKey"] == "":
-        update["apiKey"] = current.get("apiKey", "")
+    if "apiKey" in update:
+        if update["apiKey"].startswith("••••") or update["apiKey"] == "":
+            update["apiKey"] = current.get("apiKey", "")
 
-    # Validation
-    if update["walletBalance"] < 0:
+    merged = {**current, **update}
+
+    # Validation (use merged values so we always validate the final state)
+    if merged.get("walletBalance", 0) < 0:
         raise HTTPException(status_code=400, detail="Wallet balance cannot be negative.")
-    if update["defaultTradeSize"] < 0:
+    if merged.get("defaultTradeSize", 0) < 0:
         raise HTTPException(status_code=400, detail="Default trade size cannot be negative.")
-    if update["defaultTradeSize"] > update["walletBalance"]:
+    if merged.get("defaultTradeSize", 0) > merged.get("walletBalance", 0):
         raise HTTPException(
             status_code=400,
             detail="Default trade size cannot exceed wallet balance.",
         )
 
-    merged = {**current, **update}
     _write_settings(merged)
 
     return {
