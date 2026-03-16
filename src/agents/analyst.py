@@ -13,6 +13,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import yfinance as yf
 from ta.momentum import RSIIndicator
 from ta.trend import SMAIndicator
 
@@ -79,6 +80,23 @@ class AnalystAgent:
 
         # 4. Extract latest signals
         latest = df.iloc[-1]
+
+        # Determine current price — prefer real-time, fallback to last close
+        using_cached_price = False
+        try:
+            yf_ticker = yf.Ticker(ticker)
+            price = yf_ticker.fast_info.last_price
+            if price is None or price <= 0:
+                raise ValueError("No real-time price")
+        except Exception:
+            using_cached_price = True
+            if df.empty:
+                raise ValueError(
+                    f"No price data available for {ticker}. "
+                    "Please try again later."
+                )
+            price = float(df.iloc[-1]["Close"])
+
         signals = {
             "rsi_value": round(latest["RSI_14"], 2) if pd.notna(latest["RSI_14"]) else None,
             "rsi_oversold": latest.get("signal") == "BUY",
@@ -88,7 +106,8 @@ class AnalystAgent:
             "golden_cross": bool(latest.get("golden_cross", False)),
             "death_cross": bool(latest.get("death_cross", False)),
             "latest_signal": latest.get("signal", "HOLD"),
-            "latest_close": round(latest["Close"], 2),
+            "latest_close": round(price, 2),
+            "using_cached_price": using_cached_price,
         }
 
         # 5. Build summary
@@ -104,6 +123,10 @@ class AnalystAgent:
                 "date_range": fetch_result["date_range"],
                 "fetch_timestamp": fetch_result["fetch_timestamp"],
                 "valid": fetch_result["valid"],
+                "using_cached_data": fetch_result.get(
+                    "using_cached_data", False),
+                "cache_age_days": fetch_result.get(
+                    "cache_age_days", None),
             },
             "summary": summary,
         }
@@ -225,5 +248,6 @@ class AnalystAgent:
             "death_cross": False,
             "latest_signal": "HOLD",
             "latest_close": None,
+            "using_cached_price": False,
         }
 

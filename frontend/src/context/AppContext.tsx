@@ -20,6 +20,7 @@ export interface DebateArgument {
 
 export interface RunData {
     ticker: string;
+    company_name?: string;
     technicals: {
         rsi: number | null;
         sma_50: number | null;
@@ -44,7 +45,27 @@ export interface RunData {
         wallet_balance: number;
         stop_loss: number;
     };
-    status: {
+    state?: string;
+    reason?: string;
+    message?: string;
+    cache_age_days?: number | null;
+    using_cached_data?: boolean;
+    market_status?: {
+        status: string;
+        label: string;
+        next_event: string;
+        is_trading_day: boolean;
+    };
+    quant?: {
+        daily_change_percent: number | null;
+        fifty_two_week_high: number | null;
+        fifty_two_week_low: number | null;
+        volume_24h: number | null;
+        avg_volume_10d: number | null;
+        market_cap: number | null;
+        next_earnings_date: string | null;
+    };
+    status?: {
         awaiting_human_approval: boolean;
         action: string;
     };

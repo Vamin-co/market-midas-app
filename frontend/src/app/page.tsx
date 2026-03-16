@@ -22,10 +22,24 @@ export default function AnalyzePage() {
         clearRunData
     } = useAnalyze();
 
+    const [showCachedInterstitial, setShowCachedInterstitial] = useState(true);
+
+    useEffect(() => {
+        setShowCachedInterstitial(true);
+    }, [runData]);
+
     return (
         <div className="h-full w-full flex flex-col items-center justify-center animate-in fade-in duration-700">
             {isGenerating ? (
                 <LoadingState ticker={tickerInput} />
+            ) : runData?.state === "market_closed" ? (
+                <MarketClosedState runData={runData} clearRunData={clearRunData} />
+            ) : runData && runData.using_cached_data === true && showCachedInterstitial ? (
+                <CachedDataInterstitial 
+                    runData={runData} 
+                    onViewAnalysis={() => setShowCachedInterstitial(false)} 
+                    clearRunData={clearRunData} 
+                />
             ) : runData ? (
                 <ResultsState runData={runData} clearRunData={clearRunData} />
             ) : (
@@ -40,6 +54,143 @@ export default function AnalyzePage() {
                     wrapperRef={wrapperRef}
                 />
             )}
+        </div>
+    );
+}
+
+// ── CACHED DATA INTERSTITIAL ──
+
+function CachedDataInterstitial({ runData, onViewAnalysis, clearRunData }: { runData: any, onViewAnalysis: () => void, clearRunData: () => void }) {
+    const cacheAge = runData.cache_age_days || 0;
+
+    const handleSetAlert = () => {
+        window.dispatchEvent(new CustomEvent('open-alert-modal', {
+            detail: { ticker: runData.ticker }
+        }));
+        clearRunData();
+    };
+
+    return (
+        <div className="flex flex-col items-center w-full px-6 py-12 justify-center h-full">
+            <div className="bg-white rounded-2xl border border-[#1C1917]/8 shadow-sm p-8 w-full max-w-[600px] mx-auto animate-in fade-in duration-300">
+                <div className="flex justify-between items-start mb-4">
+                    <span className="bg-[#1C1917]/8 text-[#44403C]/60 text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                        ● CLOSED
+                    </span>
+                    <span className="font-serif text-[40px] text-[#1C1917] leading-none">
+                        {runData.ticker}
+                    </span>
+                </div>
+                
+                {runData.market_status?.next_event && (
+                    <div className="text-sm text-[#44403C]/60 font-sans mt-1">
+                        {runData.market_status.next_event}
+                    </div>
+                )}
+
+                <hr className="border-t border-[#1C1917]/8 my-6" />
+
+                <div className="text-sm font-sans font-medium text-[#1C1917] mb-2">
+                    Markets are closed.
+                </div>
+                
+                <div className="text-sm font-sans text-[#44403C]">
+                    This analysis uses data from {cacheAge} day{cacheAge !== 1 ? 's' : ''} ago.
+                </div>
+
+                <div className="text-xs text-[#44403C]/50 mt-2">
+                    The indicators and price shown reflect the last available trading session.
+                </div>
+
+                <div className="flex items-center justify-between mt-6">
+                    <button 
+                        onClick={handleSetAlert}
+                        className="text-xs font-bold uppercase tracking-widest text-[#44403C]/50 hover:text-[#CA8A04] transition-colors duration-200 cursor-default"
+                    >
+                        SET ALERT →
+                    </button>
+                    <button 
+                        onClick={clearRunData}
+                        className="border border-[#1C1917]/20 text-[#44403C] px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-[#1C1917]/5 transition-colors"
+                    >
+                        SEARCH ANOTHER
+                    </button>
+                    <button 
+                        onClick={onViewAnalysis}
+                        className="bg-[#CA8A04] text-[#1C1917] px-6 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest hover:scale-[1.02] transition-transform duration-200"
+                    >
+                        VIEW ANALYSIS →
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ── MARKET CLOSED STATE ──
+
+function MarketClosedState({ runData, clearRunData }: { runData: any, clearRunData: () => void }) {
+    const reason = runData.reason;
+    const cacheAge = runData.cache_age_days;
+
+    const handleSetAlert = () => {
+        // Dispatch custom event to tell the global layout to open the alert modal
+        window.dispatchEvent(new CustomEvent('open-alert-modal', {
+            detail: { ticker: runData.ticker }
+        }));
+    };
+
+    return (
+        <div className="flex flex-col items-center w-full px-6 py-12 justify-center h-full">
+            <div className="bg-white rounded-2xl border border-[#1C1917]/8 shadow-sm p-8 w-full max-w-[600px] mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="flex justify-between items-start mb-4">
+                    <span className="bg-[#1C1917]/8 text-[#44403C]/60 text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                        ● CLOSED
+                    </span>
+                    <span className="font-serif text-[40px] text-[#1C1917] leading-none">
+                        {runData.ticker}
+                    </span>
+                </div>
+                
+                <div className="text-sm text-[#44403C]/60 font-sans mt-2">
+                    {runData.market_status?.next_event || "Check back during market hours"}
+                </div>
+
+                <hr className="border-t border-[#1C1917]/8 my-6" />
+
+                <div className="text-sm text-[#44403C] font-sans">
+                    Markets are closed. Try again when markets open.
+                </div>
+                
+                {reason === "cache_too_stale" && cacheAge != null ? (
+                    <div className="text-xs text-[#44403C]/40 mt-2">
+                        Last cached data is {cacheAge} days old — too stale for reliable analysis.
+                    </div>
+                ) : reason === "no_cached_data" ? (
+                    <div className="text-xs text-[#44403C]/40 mt-2">
+                        No previous data exists for this ticker. Analyze it first on a trading day.
+                    </div>
+                ) : (
+                    <div className="text-xs text-[#44403C]/40 mt-2">
+                        {runData.message}
+                    </div>
+                )}
+
+                <div className="flex items-center justify-between mt-8 pt-2">
+                    <button 
+                        onClick={handleSetAlert}
+                        className="text-xs text-[#44403C]/50 hover:text-[#CA8A04] transition-colors font-sans uppercase font-bold tracking-widest"
+                    >
+                        SET ALERT →
+                    </button>
+                    <button 
+                        onClick={clearRunData}
+                        className="border border-[#1C1917]/20 text-[#44403C] px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-[#1C1917]/5 transition-colors"
+                    >
+                        SEARCH ANOTHER
+                    </button>
+                </div>
+            </div>
         </div>
     );
 }
@@ -75,94 +226,215 @@ function ResultsState({ runData, clearRunData }: { runData: any, clearRunData: (
     const rationale = isBuy ? runData.debate?.bull_argument : (isSell ? runData.debate?.bear_argument : "Market conditions do not present a clear asymmetric opportunity. The opposing agents reached a stalemate or confidence levels were below the required threshold for capital deployment.");
 
     return (
-        <div className="flex flex-col items-center w-full max-w-[800px] px-6 py-12 gap-6 overflow-y-auto h-full scrollbar-none pb-32">
+        <div className="flex flex-col items-center w-full max-w-[800px] px-6 pt-10 gap-3 overflow-y-auto h-full scrollbar-none pb-32">
 
-            <div className="w-full text-center mb-2 animate-in fade-in duration-500">
+            <div className="w-full relative flex items-center justify-center mb-2 animate-in fade-in duration-500">
                 <h2 className="font-sans text-[#1C1917]/50 text-[10px] font-bold uppercase tracking-widest">
                     Analysis Complete &middot; {runData.ticker}
                 </h2>
+                {runData.market_status && (
+                    <div className="absolute right-0 group cursor-default">
+                        <span className={`text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ${
+                            runData.market_status.status === 'open' ? 'bg-[#27c93f]/10 text-[#27c93f]' :
+                            runData.market_status.status === 'pre_market' ? 'bg-[#CA8A04]/10 text-[#CA8A04]' :
+                            runData.market_status.status === 'post_market' ? 'bg-[#CA8A04]/10 text-[#CA8A04]' :
+                            'bg-[#1C1917]/8 text-[#44403C]/50'
+                        }`}>
+                            ● {runData.market_status.status === 'open' ? 'OPEN' : 
+                               runData.market_status.status === 'pre_market' ? 'PRE-MARKET' :
+                               runData.market_status.status === 'post_market' ? 'POST-MARKET' :
+                               'CLOSED'}
+                        </span>
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-[#1C1917] text-[#FAFAF9] text-[10px] px-3 py-1.5 rounded-lg absolute z-10 top-full right-0 mt-2 whitespace-nowrap pointer-events-none">
+                            {runData.market_status.next_event}
+                        </div>
+                    </div>
+                )}
             </div>
 
-            {/* Card 1 — Price & Quant Summary */}
-            <div className="w-full bg-white p-10 rounded-2xl border border-[#1C1917]/5 shadow-sm hover:shadow-xl transition-shadow duration-500 animate-in slide-in-from-bottom-2 fade-in duration-300 fill-mode-both">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
+            {/* Card 1 — Price & Quant Summary (Rebuilt) */}
+            <div className="w-full bg-white p-5 rounded-2xl border border-[#1C1917]/8 shadow-sm">
+                
+                {/* SECTION 1 — HEADER ROW */}
+                <div className="flex justify-between items-start">
                     <div>
-                        <div className="text-[10px] font-sans font-bold uppercase tracking-widest text-[#1C1917]/50 mb-2">Current Price</div>
-                        <div className="font-serif text-[40px] text-[#1C1917] leading-none mb-2">
+                        <div className="font-sans font-medium text-[15px] text-[#1C1917] leading-snug">
+                            {runData.company_name || runData.ticker}
+                        </div>
+                        <div className="font-sans text-[12px] text-[#44403C]/50 mt-0.5 tracking-wide">
+                            {runData.ticker}
+                        </div>
+                    </div>
+                    {runData.market_status && (
+                        <div className="flex items-center gap-1.5" title={runData.market_status.next_event}>
+                            <div className={`w-1.5 h-1.5 rounded-full ${
+                                runData.market_status.status === 'open' ? 'bg-[#27c93f]' :
+                                runData.market_status.status === 'pre_market' ? 'bg-[#CA8A04]' :
+                                runData.market_status.status === 'post_market' ? 'bg-[#CA8A04]' :
+                                'bg-[#44403C]/30'
+                            }`} />
+                            <div className={`font-sans text-[11px] ${
+                                runData.market_status.status === 'open' ? 'text-[#27c93f]' :
+                                runData.market_status.status === 'pre_market' ? 'text-[#CA8A04]' :
+                                runData.market_status.status === 'post_market' ? 'text-[#CA8A04]' :
+                                'text-[#44403C]/50'
+                            }`}>
+                                {runData.market_status.label}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* ROW 1 — Price + Label */}
+                <div className="flex items-baseline mt-4 mb-1.5">
+                    <div className="flex-1 flex items-baseline gap-2.5">
+                        <div className="font-serif text-[40px] leading-none text-[#1C1917] tabular-nums tracking-tight">
                             {formatCurrency(runData.technicals?.price || 0)}
                         </div>
-                        <div className="flex items-center gap-3 text-xs font-sans font-medium">
-                            <span className={(runData.quant?.daily_change_percent || 0) >= 0 ? "text-[#27c93f]" : "text-[#ff5f56]"}>
-                                {(runData.quant?.daily_change_percent || 0) >= 0 ? "+" : ""}{(runData.quant?.daily_change_percent || 0).toFixed(2)}%
-                            </span>
-                            <span className="text-[#1C1917]/30">|</span>
-                            <span className="text-[#1C1917]/60">52W: {formatCurrency(runData.quant?.fifty_two_week_low || 0)} - {formatCurrency(runData.quant?.fifty_two_week_high || 0)}</span>
-                            {runData.quant?.market_cap != null && (
-                                <><span className="text-[#1C1917]/30">|</span><span className="text-[#1C1917]/60">Mkt Cap {formatMarketCap(runData.quant.market_cap)}</span></>
+                        {runData.quant?.daily_change_percent != null && runData.quant.daily_change_percent !== 0 && (
+                            <div className={`font-sans text-[13px] pb-1 flex items-center gap-1 ${
+                                runData.quant.daily_change_percent >= 0 ? "text-[#27c93f]" : "text-[#ff5f56]"
+                            }`}>
+                                {runData.quant.daily_change_percent >= 0 ? "▲" : "▼"}
+                                {Math.abs(runData.quant.daily_change_percent).toFixed(2)}% today
+                            </div>
+                        )}
+                    </div>
+                    <div className="w-px mx-5" />
+                    <div className="flex-1 font-sans text-[9px] uppercase tracking-widest text-[#44403C]/40 self-end pb-1">
+                        TECHNICAL INDICATORS
+                    </div>
+                </div>
+
+                {runData.using_cached_data === true && (
+                    <div className="font-sans text-[9px] uppercase tracking-widest text-[#44403C]/40 mt-1">
+                        LAST AVAILABLE DATA &middot; {runData.cache_age_days || 0}D OLD &middot; MARKET CLOSED
+                    </div>
+                )}
+
+                {/* ROW 2 — Stats + Technicals with Divider */}
+                <div className="flex">
+                    {/* LEFT COLUMN */}
+                    <div className="flex-1 pr-6">
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                            {runData.quant?.fifty_two_week_high != null && runData.quant.fifty_two_week_high !== 0 && (
+                                <div>
+                                    <div className="text-[9px] uppercase tracking-widest text-[#44403C]/40 font-sans">52W HIGH</div>
+                                    <div className="text-[13px] font-medium text-[#1C1917] font-sans tabular-nums mt-0.5">
+                                        {formatCurrency(runData.quant.fifty_two_week_high)}
+                                    </div>
+                                </div>
+                            )}
+                            {runData.quant?.fifty_two_week_low != null && runData.quant.fifty_two_week_low !== 0 && (
+                                <div>
+                                    <div className="text-[9px] uppercase tracking-widest text-[#44403C]/40 font-sans">52W LOW</div>
+                                    <div className="text-[13px] font-medium text-[#1C1917] font-sans tabular-nums mt-0.5">
+                                        {formatCurrency(runData.quant.fifty_two_week_low)}
+                                    </div>
+                                </div>
+                            )}
+                            {runData.quant?.market_cap != null && runData.quant.market_cap !== 0 && (
+                                <div>
+                                    <div className="text-[9px] uppercase tracking-widest text-[#44403C]/40 font-sans">MARKET CAP</div>
+                                    <div className="text-[13px] font-medium text-[#1C1917] font-sans tabular-nums mt-0.5">
+                                        {formatMarketCap(runData.quant.market_cap)}
+                                    </div>
+                                </div>
+                            )}
+                            {runData.quant?.next_earnings_date != null && (
+                                <div>
+                                    <div className="text-[9px] uppercase tracking-widest text-[#44403C]/40 font-sans">EARNINGS</div>
+                                    <div className="text-[13px] font-medium text-[#1C1917] font-sans tabular-nums mt-0.5">
+                                        {new Date(runData.quant.next_earnings_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                    </div>
+                                </div>
                             )}
                         </div>
                     </div>
 
-                    <div className="flex flex-col gap-4 w-full md:w-1/2">
-                        <div>
-                            <div className="flex justify-between text-[10px] font-sans font-bold uppercase tracking-widest text-[#1C1917]/50 mb-1">
-                                <span>SMA 50</span>
-                                <span className="flex items-center gap-0">
-                                    {formatCurrency(runData.technicals?.sma_50 || 0)}
-                                    {runData.technicals?.sma_50 != null && (
-                                        <span className={`text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ml-2 ${
-                                            (runData.technicals?.price || 0) > runData.technicals.sma_50
-                                                ? 'bg-[#27c93f]/10 text-[#27c93f]'
-                                                : 'bg-[#ff5f56]/10 text-[#ff5f56]'
-                                        }`}>
-                                            {(runData.technicals?.price || 0) > runData.technicals.sma_50 ? '↑ ABOVE' : '↓ BELOW'}
-                                        </span>
-                                    )}
-                                </span>
-                            </div>
-                            <div className="w-full h-1 bg-[#1C1917]/10 rounded-full overflow-hidden relative">
-                                {/* Indicator visually showing if price is above or below sma */}
-                                <div className={`absolute top-0 bottom-0 ${((runData.technicals?.price || 0) > (runData.technicals?.sma_50 || 0)) ? 'bg-[#27c93f] right-1/2 left-0' : 'bg-[#ff5f56] left-1/2 right-0'}`} />
-                                <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-[#1C1917] -ml-[1px]" />
-                            </div>
-                        </div>
-                        {/* RSI Row */}
-                        {rsiVal !== null && rsiChip && (
-                            <div className="flex justify-between items-center">
-                                <span className="text-[9px] font-sans font-bold uppercase tracking-widest text-[#44403C]/50 cursor-default" title="Relative Strength Index. Below 30 = oversold (potential buy signal). Above 70 = overbought (potential sell signal).">
-                                    RSI
-                                </span>
-                                <span className="flex items-center">
-                                    <span className="text-sm font-sans text-[#1C1917]">{rsiVal.toFixed(2)}</span>
-                                    <span className={`text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ml-2 ${rsiChip.bg} ${rsiChip.text}`}>
-                                        {rsiChip.label}
-                                    </span>
-                                </span>
+                    {/* RIGHT COLUMN */}
+                    <div className="flex-1 pl-6">
+                        {runData.technicals?.rsi != null && (
+                            <div className="flex items-center py-2 border-b border-[#1C1917]/5">
+                                <div className="font-sans text-[13px] text-[#44403C]/70 flex-1">RSI</div>
+                                <div className="font-sans text-[13px] font-medium text-[#1C1917] tabular-nums mr-3">
+                                    {runData.technicals.rsi.toFixed(1)}
+                                </div>
+                                <div className={`font-sans text-[11px] font-medium px-2.5 py-0.5 rounded min-w-[62px] text-center ${
+                                    runData.technicals.rsi < 30 ? 'bg-[#27c93f]/10 text-[#27c93f]' :
+                                    runData.technicals.rsi > 70 ? 'bg-[#ff5f56]/10 text-[#ff5f56]' :
+                                    'bg-[#1C1917]/8 text-[#44403C]/60'
+                                }`}>
+                                    {runData.technicals.rsi < 30 ? 'Oversold' : runData.technicals.rsi > 70 ? 'Overbought' : 'Neutral'}
+                                </div>
                             </div>
                         )}
-                        {/* Golden / Death Cross Pill */}
-                        {runData.technicals?.golden_cross === true && (
-                            <div>
-                                <span className="inline-block text-[9px] font-bold uppercase tracking-widest px-3 py-1 rounded-full bg-[#27c93f]/10 text-[#27c93f] border border-[#27c93f]/20">
-                                    ✦ GOLDEN CROSS
-                                </span>
+
+                        {runData.technicals?.sma_50 != null && (
+                            <div className="flex items-center py-2 border-b border-[#1C1917]/5">
+                                <div className="font-sans text-[13px] text-[#44403C]/70 flex-1">SMA 50</div>
+                                <div className="font-sans text-[13px] font-medium text-[#1C1917] tabular-nums mr-3">
+                                    {formatCurrency(runData.technicals.sma_50)}
+                                </div>
+                                <div className={`font-sans text-[11px] font-medium px-2.5 py-0.5 rounded min-w-[62px] text-center ${
+                                    (runData.technicals?.price || 0) > runData.technicals.sma_50 ? 'bg-[#27c93f]/10 text-[#27c93f]' : 'bg-[#ff5f56]/10 text-[#ff5f56]'
+                                }`}>
+                                    {(runData.technicals?.price || 0) > runData.technicals.sma_50 ? 'Above' : 'Below'}
+                                </div>
                             </div>
                         )}
-                        {runData.technicals?.death_cross === true && (
-                            <div>
-                                <span className="inline-block text-[9px] font-bold uppercase tracking-widest px-3 py-1 rounded-full bg-[#ff5f56]/10 text-[#ff5f56] border border-[#ff5f56]/20">
-                                    ✦ DEATH CROSS
-                                </span>
+
+                        {runData.technicals?.sma_200 != null && (
+                            <div className="flex items-center py-2 border-b border-[#1C1917]/5">
+                                <div className="font-sans text-[13px] text-[#44403C]/70 flex-1">SMA 200</div>
+                                <div className="font-sans text-[13px] font-medium text-[#1C1917] tabular-nums mr-3">
+                                    {formatCurrency(runData.technicals.sma_200)}
+                                </div>
+                                <div className={`font-sans text-[11px] font-medium px-2.5 py-0.5 rounded min-w-[62px] text-center ${
+                                    (runData.technicals?.price || 0) > runData.technicals.sma_200 ? 'bg-[#27c93f]/10 text-[#27c93f]' : 'bg-[#ff5f56]/10 text-[#ff5f56]'
+                                }`}>
+                                    {(runData.technicals?.price || 0) > runData.technicals.sma_200 ? 'Above' : 'Below'}
+                                </div>
                             </div>
                         )}
-                        <div>
-                            <div className="flex gap-4 text-[10px] font-sans font-bold uppercase tracking-widest text-[#1C1917]/50">
-                                <div>Vol 24H: <span className="text-[#1C1917]/80">{formatNumber(runData.quant?.volume_24h || 0)}</span></div>
-                                <div className="ml-4">Avg 10D: <span className="text-[#1C1917]/80">{formatNumber(runData.quant?.avg_volume_10d || 0)}</span></div>
+
+                        {runData.quant?.volume_24h != null && runData.quant.volume_24h !== 0 && (
+                            <div className="flex items-center py-2">
+                                <div className="font-sans text-[13px] text-[#44403C]/70 flex-1">Volume</div>
+                                <div className="font-sans text-[13px] font-medium text-[#1C1917] tabular-nums mr-3">
+                                    {formatNumber(runData.quant.volume_24h)}
+                                </div>
+                                <div className={`font-sans text-[11px] font-medium px-2.5 py-0.5 rounded min-w-[62px] text-center ${
+                                    runData.quant.avg_volume_10d && runData.quant.volume_24h > (runData.quant.avg_volume_10d * 1.5) ? 'bg-[#CA8A04]/10 text-[#CA8A04]' :
+                                    runData.quant.avg_volume_10d && runData.quant.volume_24h < (runData.quant.avg_volume_10d * 0.8) ? 'bg-[#1C1917]/8 text-[#44403C]/40' :
+                                    'bg-[#1C1917]/8 text-[#44403C]/60'
+                                }`}>
+                                    {runData.quant.avg_volume_10d && runData.quant.volume_24h > (runData.quant.avg_volume_10d * 1.5) ? 'High' :
+                                     runData.quant.avg_volume_10d && runData.quant.volume_24h < (runData.quant.avg_volume_10d * 0.8) ? 'Low' :
+                                     'Normal'}
+                                </div>
                             </div>
-                        </div>
+                        )}
                     </div>
                 </div>
+
+                {/* SECTION 5 — CONDITIONAL SIGNAL BANNER */}
+                {runData.technicals?.golden_cross === true ? (
+                    <div className="mt-3.5 flex items-center gap-2 px-3 py-2.5 rounded-xl bg-[#CA8A04]/10 border border-[#CA8A04]/20">
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#CA8A04]" />
+                        <div className="font-sans text-[12px] font-medium text-[#CA8A04]">
+                            Golden cross active — 50-day crossed above 200-day
+                        </div>
+                    </div>
+                ) : runData.technicals?.death_cross === true ? (
+                    <div className="mt-3.5 flex items-center gap-2 px-3 py-2.5 rounded-xl bg-[#ff5f56]/10 border border-[#ff5f56]/20">
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#ff5f56]" />
+                        <div className="font-sans text-[12px] font-medium text-[#ff5f56]">
+                            Death cross active — 50-day crossed below 200-day
+                        </div>
+                    </div>
+                ) : null}
+                
             </div>
 
             {/* Card 2 — Recommendation */}

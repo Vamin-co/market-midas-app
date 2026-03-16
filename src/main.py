@@ -34,6 +34,7 @@ from src.risk.manager import RiskManager
 from src.agents.researcher import ResearcherAgent
 from src.strategy.engine import StrategyEngine
 from src.strategy.debate import run_debate
+from src.utils.market import get_market_status
 
 logging.basicConfig(
     level=logging.INFO,
@@ -91,6 +92,7 @@ def _fetch_quant_data(ticker: str, current_price: float) -> dict[str, Any]:
         quant["volume_24h"] = info.get("volume")
         quant["avg_volume_10d"] = info.get("averageVolume10days")
         quant["market_cap"] = info.get("marketCap")
+        quant["company_name"] = info.get("longName", ticker)
 
         # next_earnings_date — may be a list, datetime, or int timestamp
         raw_earnings = info.get("earningsDate")
@@ -438,6 +440,29 @@ def run_daily_cycle(
         return {"ticker": ticker, "signal": "ERROR", "action": "none", "result": None}
 
     df = analysis["dataframe"]
+    data_meta = analysis.get("data_meta", {})
+
+    # Check for empty data — return structured market_closed response
+    if df.empty:
+        reason = "no_cached_data"
+        cache_age = None
+        if data_meta.get("cache_too_stale"):
+            reason = "cache_too_stale"
+            cache_age = data_meta.get("cache_age_days")
+        elif data_meta.get("no_cached_data"):
+            reason = "no_cached_data"
+
+        market_closed_response = {
+            "state": "market_closed",
+            "ticker": ticker,
+            "market_status": get_market_status(),
+            "reason": reason,
+            "cache_age_days": cache_age,
+            "message": f"Markets are closed and no recent data is available for {ticker}.",
+        }
+        print(f"\n  🔒 {market_closed_response['message']}")
+        return market_closed_response
+
     latest = df.iloc[-1]
     current_price = latest["Close"]
     rsi = latest.get("RSI_14", float("nan"))
@@ -692,8 +717,12 @@ def run_daily_cycle(
         if sentiment_context else 0.0
     )
 
+    # Extract company_name from quant data (always present, falls back to ticker)
+    company_name = quant_data.pop("company_name", ticker)
+
     frontend_data = {
         "ticker": ticker,
+        "company_name": company_name,
         "confidence": confidence,
         "zone": zone,
         "technicals": {
@@ -728,8 +757,14 @@ def run_daily_cycle(
         "status": {
             "awaiting_human_approval": True if zone == "MARGINAL" else False,
             "action": action
-        }
+        },
+        "market_status": get_market_status(),
     }
+
+    # Surface cache metadata if analysis used cached data
+    if data_meta.get("using_cached_data"):
+        frontend_data["using_cached_data"] = True
+        frontend_data["cache_age_days"] = data_meta.get("cache_age_days", 0)
     
     json_path = ARTIFACTS_DIR / "latest_run.json"
     with open(json_path, "w") as f:
