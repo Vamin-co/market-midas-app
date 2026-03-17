@@ -37,9 +37,18 @@ class AnalyzeOutcome:
     data_meta: dict[str, Any] | None = None
 
 
+class AnalysisCancelled(Exception):
+    """Raised when an in-flight streamed analysis is cancelled."""
+
+
 def _emit(event_sink: EventSink | None, event: str, payload: dict[str, Any]) -> None:
     if event_sink is not None:
         event_sink(event, payload)
+
+
+def _raise_if_cancelled(cancel_check: Callable[[], bool] | None) -> None:
+    if cancel_check is not None and cancel_check():
+        raise AnalysisCancelled("Analysis stream cancelled")
 
 
 def _fetch_quant_data(ticker: str, current_price: float) -> dict[str, Any]:
@@ -155,6 +164,7 @@ def analyze_ticker(
     settings: dict[str, Any],
     wallet_balance: float | None = None,
     event_sink: EventSink | None = None,
+    cancel_check: Callable[[], bool] | None = None,
 ) -> AnalyzeOutcome:
     """Run the analysis pipeline without any execution side effects."""
 
@@ -176,6 +186,7 @@ def analyze_ticker(
         },
     )
 
+    _raise_if_cancelled(cancel_check)
     analysis = analyst.analyze(ticker_upper)
     if "error" in analysis:
         payload = {
@@ -235,6 +246,7 @@ def analyze_ticker(
         },
     )
 
+    _raise_if_cancelled(cancel_check)
     sentiment_context = _build_sentiment_context(researcher, ticker_upper)
     if sentiment_context is not None:
         _emit(
@@ -248,14 +260,20 @@ def analyze_ticker(
             },
         )
 
-    debate_result = run_debate(
-        ticker_upper,
-        df,
-        engine_signal,
-        sentiment_context,
-        event_sink=event_sink,
-    )
+    _raise_if_cancelled(cancel_check)
+    debate_result: DebateResult | None = None
+    if zone == "MARGINAL":
+        debate_result = run_debate(
+            ticker_upper,
+            df,
+            engine_signal,
+            sentiment_context,
+            event_sink=event_sink,
+        )
+    else:
+        logger.info("Debate skipped — zone is %s, not MARGINAL", zone)
 
+    _raise_if_cancelled(cancel_check)
     current_position = get_position(ticker_upper, normalized_mode)
     available_cash, starting_balance = _resolve_cash_and_starting_balance(
         mode=normalized_mode,
@@ -270,7 +288,7 @@ def analyze_ticker(
         max_drawdown_pct=max_daily_drawdown_pct,
     )
 
-    if zone == "MARGINAL":
+    if zone == "MARGINAL" and debate_result is not None:
         if debate_result.recommendation == "SKIP":
             signal = "HOLD"
         elif debate_result.recommendation == "REDUCE_SIZE":
@@ -290,6 +308,17 @@ def analyze_ticker(
     company_name = quant_data.pop("company_name", ticker_upper)
 
     sentiment_sources = _build_sentiment_sources(sentiment_context)
+    debate_payload = {
+        "bull_argument": _format_argument_text(
+            debate_result.bull_best_arg if debate_result is not None else None
+        ),
+        "bear_argument": _format_argument_text(
+            debate_result.bear_best_arg if debate_result is not None else None
+        ),
+        "bull_score": debate_result.bull_score if debate_result is not None else 0.0,
+        "bear_score": debate_result.bear_score if debate_result is not None else 0.0,
+        "winner": debate_result.winner if debate_result is not None else "NONE",
+    }
     payload: dict[str, Any] = {
         "ticker": ticker_upper,
         "company_name": company_name,
@@ -309,13 +338,7 @@ def analyze_ticker(
             "score": sentiment_context.get("composite_score", 0.0) if sentiment_context else 0.0,
             "sources": sentiment_sources,
         },
-        "debate": {
-            "bull_argument": _format_argument_text(debate_result.bull_best_arg),
-            "bear_argument": _format_argument_text(debate_result.bear_best_arg),
-            "bull_score": debate_result.bull_score,
-            "bear_score": debate_result.bear_score,
-            "winner": debate_result.winner,
-        },
+        "debate": debate_payload,
         "risk": {
             "recommended_dollars": risk_position["max_dollars"],
             "recommended_shares": risk_position["max_shares"],
@@ -344,6 +367,7 @@ def analyze_ticker(
             "reason": circuit_breaker["reason"],
         }
 
+    _raise_if_cancelled(cancel_check)
     _emit(event_sink, "result", payload)
     return AnalyzeOutcome(
         payload=payload,

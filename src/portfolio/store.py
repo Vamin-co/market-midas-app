@@ -240,56 +240,57 @@ def close_trade(
     exit_price: float,
     manual_override: bool = False,
 ) -> dict[str, Any]:
-    trades = load_trades()
-    trade_index = next((idx for idx, trade in enumerate(trades) if trade.get("id") == trade_id), -1)
-    if trade_index == -1:
-        raise ValueError("Trade not found")
+    with TRADES_WRITE_LOCK:
+        trades = load_trades()
+        trade_index = next((idx for idx, trade in enumerate(trades) if trade.get("id") == trade_id), -1)
+        if trade_index == -1:
+            raise ValueError("Trade not found")
 
-    trade = trades[trade_index]
-    if trade.get("status") != "open":
-        raise ValueError("Trade is already closed")
+        trade = trades[trade_index]
+        if trade.get("status") != "open":
+            raise ValueError("Trade is already closed")
 
-    quantity = int(trade.get("quantity") or 0)
-    entry_price = float(trade.get("price") or 0.0)
-    resolved_exit = round(float(exit_price), 2)
-    pnl = round((resolved_exit - entry_price) * quantity, 2)
-    exit_dollar_amount = round(resolved_exit * quantity, 2)
-    closed_at = datetime.now(timezone.utc).isoformat()
-    closed_status: TradeStatus = "closed_manual_override" if manual_override else "closed"
+        quantity = int(trade.get("quantity") or 0)
+        entry_price = float(trade.get("price") or 0.0)
+        resolved_exit = round(float(exit_price), 2)
+        pnl = round((resolved_exit - entry_price) * quantity, 2)
+        exit_dollar_amount = round(resolved_exit * quantity, 2)
+        closed_at = datetime.now(timezone.utc).isoformat()
+        closed_status: TradeStatus = "closed_manual_override" if manual_override else "closed"
 
-    trades[trade_index] = {
-        **trade,
-        "status": closed_status,
-        "pnl": pnl,
-        "closedAt": closed_at,
-        "exitPrice": resolved_exit,
-    }
-
-    trades.append(
-        {
-            "id": f"{trade_id}-sell",
-            "timestamp": closed_at,
-            "action": "SELL",
-            "ticker": str(trade.get("ticker") or ""),
-            "quantity": quantity,
-            "price": resolved_exit,
-            "dollar_amount": exit_dollar_amount,
-            "mode": normalize_mode(str(trade.get("mode") or "paper")),
+        trades[trade_index] = {
+            **trade,
             "status": closed_status,
             "pnl": pnl,
             "closedAt": closed_at,
             "exitPrice": resolved_exit,
         }
-    )
 
-    save_trades(trades)
-    return {
-        "trade": trades[trade_index],
-        "pnl": pnl,
-        "exitPrice": resolved_exit,
-        "exitDollarAmount": exit_dollar_amount,
-        "closedAt": closed_at,
-    }
+        trades.append(
+            {
+                "id": f"{trade_id}-sell",
+                "timestamp": closed_at,
+                "action": "SELL",
+                "ticker": str(trade.get("ticker") or ""),
+                "quantity": quantity,
+                "price": resolved_exit,
+                "dollar_amount": exit_dollar_amount,
+                "mode": normalize_mode(str(trade.get("mode") or "paper")),
+                "status": closed_status,
+                "pnl": pnl,
+                "closedAt": closed_at,
+                "exitPrice": resolved_exit,
+            }
+        )
+
+        save_trades(trades)
+        return {
+            "trade": trades[trade_index],
+            "pnl": pnl,
+            "exitPrice": resolved_exit,
+            "exitDollarAmount": exit_dollar_amount,
+            "closedAt": closed_at,
+        }
 
 
 def close_ticker_position(

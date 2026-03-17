@@ -2,7 +2,6 @@
 Market-Midas FastAPI Server.
 
 Provides:
-  - POST /execute  — Trigger the full analysis pipeline
   - GET  /settings — Read user preferences from config/settings.json
   - POST /settings — Save user preferences to config/settings.json
   - GET  /prices   — Batched live-price polling via yfinance (cached 15 min)
@@ -10,6 +9,7 @@ Provides:
   - POST /alerts/test  — Dev-only: manually trigger one alert cycle
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -19,20 +19,19 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from queue import Empty, Queue
-from threading import Thread
+from threading import Lock, Thread
+from time import monotonic
 from typing import Any, Optional
 
 import yfinance as yf
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-# Import the core engine
-from src.main import run_daily_cycle
 from src.portfolio.store import close_trade, get_tracker_snapshot, load_trades
-from src.services.analyze import analyze_ticker
+from src.services.analyze import AnalysisCancelled, analyze_ticker
 from src.services.trade import execute_trade
 from src.utils.market import get_market_status
 from src.alert_engine import (
@@ -104,17 +103,15 @@ _price_cache: dict[str, dict[str, Any]] = {}
 PRICE_CACHE_TTL_SECONDS = 15 * 60  # 15 minutes
 TRADE_TICKER_PATTERN = re.compile(r"^[A-Z][A-Z0-9.-]{0,9}$")
 VALID_TRADE_MODES = {"paper", "live"}
+SSE_STREAM_TIMEOUT_SECONDS = 120.0
+SSE_MAX_CONNECTIONS_PER_IP = 3
+_active_sse_connections: dict[str, int] = {}
+_active_sse_connections_lock = Lock()
 
 
 # ════════════════════════════════════════════════════════════════
 # Models
 # ════════════════════════════════════════════════════════════════
-
-class ExecutionRequest(BaseModel):
-    ticker: str
-    mode: str = "PAPER"
-    wallet_balance: Optional[float] = None
-
 
 class AnalyzeRequest(BaseModel):
     ticker: str
@@ -401,6 +398,26 @@ def _format_sse_event(event: str, payload: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
 
 
+def _reserve_sse_slot(client_ip: str) -> None:
+    with _active_sse_connections_lock:
+        active = _active_sse_connections.get(client_ip, 0)
+        if active >= SSE_MAX_CONNECTIONS_PER_IP:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many concurrent analysis streams for this client.",
+            )
+        _active_sse_connections[client_ip] = active + 1
+
+
+def _release_sse_slot(client_ip: str) -> None:
+    with _active_sse_connections_lock:
+        active = _active_sse_connections.get(client_ip, 0)
+        if active <= 1:
+            _active_sse_connections.pop(client_ip, None)
+        else:
+            _active_sse_connections[client_ip] = active - 1
+
+
 def _validate_trade_request_shape(request: TradeRequest) -> None:
     ticker_upper = request.ticker.strip().upper()
     mode_lower = (request.mode or "").strip().lower()
@@ -472,15 +489,22 @@ def analyze_endpoint(request: AnalyzeRequest):
 
 @app.get("/analyze/stream")
 def analyze_stream_endpoint(
+    request: Request,
     ticker: str = Query(..., min_length=1),
     mode: str = Query("PAPER"),
     wallet_balance: float | None = Query(None),
 ):
     """Stream analysis and debate events via SSE."""
     settings = _read_settings()
+    client_ip = request.client.host if request.client else "unknown"
+    _reserve_sse_slot(client_ip)
+
+    cancel_event = asyncio.Event()
     queue: Queue[tuple[str, dict[str, Any]] | None] = Queue()
 
     def emit(event: str, payload: dict[str, Any]) -> None:
+        if cancel_event.is_set():
+            raise AnalysisCancelled("Analysis stream cancelled")
         queue.put((event, payload))
 
     def runner() -> None:
@@ -491,28 +515,56 @@ def analyze_stream_endpoint(
                 settings=settings,
                 wallet_balance=wallet_balance,
                 event_sink=emit,
+                cancel_check=cancel_event.is_set,
             )
+        except AnalysisCancelled:
+            logging.info("Analyze stream cancelled for %s.", ticker.upper())
         except Exception as exc:
-            logging.error("Analyze stream failed: %s", exc)
-            queue.put(("error", {"message": str(exc)}))
+            if not cancel_event.is_set():
+                logging.error("Analyze stream failed: %s", exc)
+                queue.put(("error", {"message": str(exc)}))
         finally:
             queue.put(None)
 
-    Thread(target=runner, daemon=True).start()
+    try:
+        Thread(target=runner, daemon=True).start()
+    except Exception:
+        cancel_event.set()
+        _release_sse_slot(client_ip)
+        raise
 
     def event_generator():
-        while True:
-            try:
-                item = queue.get(timeout=15)
-            except Empty:
-                yield ": keep-alive\n\n"
-                continue
+        started_at = monotonic()
+        try:
+            while True:
+                remaining = SSE_STREAM_TIMEOUT_SECONDS - (monotonic() - started_at)
+                if remaining <= 0:
+                    cancel_event.set()
+                    yield _format_sse_event(
+                        "error",
+                        {"type": "error", "message": "Stream timeout"},
+                    )
+                    break
 
-            if item is None:
-                break
+                try:
+                    item = queue.get(timeout=min(15.0, remaining))
+                except Empty:
+                    if cancel_event.is_set():
+                        break
+                    yield ": keep-alive\n\n"
+                    continue
 
-            event, payload = item
-            yield _format_sse_event(event, payload)
+                if item is None:
+                    break
+
+                event, payload = item
+                yield _format_sse_event(event, payload)
+        except GeneratorExit:
+            cancel_event.set()
+            raise
+        finally:
+            cancel_event.set()
+            _release_sse_slot(client_ip)
 
     return StreamingResponse(
         event_generator(),
@@ -692,47 +744,6 @@ def delete_alert(alert_id: str):
         raise HTTPException(status_code=404, detail=f"Alert {alert_id} not found.")
     _save_user_alerts_atomic(alerts)
     return {"success": True}
-
-
-# ════════════════════════════════════════════════════════════════
-# Pipeline Execution
-# ════════════════════════════════════════════════════════════════
-
-@app.post("/execute")
-def execute_cycle(request: ExecutionRequest):
-    """
-    Triggers the Market-Midas pipeline for the given ticker.
-    Runs Analyst -> StrategyEngine -> Debate -> RiskManager -> Trader.
-    Returns the Contract-First JSON schema for the Next.js frontend.
-    """
-    ticker = request.ticker.upper()
-
-    # Resolve wallet balance: request param → settings file → default
-    settings = _read_settings()
-    wallet_balance = request.wallet_balance
-    if wallet_balance is None:
-        wallet_balance = settings.get("walletBalance", 100_000.0)
-
-    # Circuit breaker params from settings
-    max_daily_drawdown_pct = settings.get("maxDailyDrawdown", 5.0) / 100.0  # Convert % → decimal
-    starting_balance = settings.get("walletBalance", 100_000.0)  # Day-start reference
-
-    try:
-        logging.info(
-            "FastAPI: Triggering run_daily_cycle for %s (balance=$%.2f, drawdown_limit=%.1f%%)",
-            ticker, wallet_balance, max_daily_drawdown_pct * 100,
-        )
-        frontend_data = run_daily_cycle(
-            ticker,
-            mode=request.mode,
-            wallet_balance=wallet_balance,
-            max_daily_drawdown_pct=max_daily_drawdown_pct,
-            starting_balance=starting_balance,
-        )
-        return frontend_data
-    except Exception as e:
-        logging.error("Execution failed: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ════════════════════════════════════════════════════════════════

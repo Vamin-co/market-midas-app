@@ -411,96 +411,18 @@ def run_daily_cycle(
     max_daily_drawdown_pct: float = 0.05,
     starting_balance: float | None = None,
 ) -> dict[str, Any]:
-    """Compatibility wrapper for the legacy combined analysis + execution flow."""
-    settings = _read_settings_local()
-    normalized_mode = normalize_mode(mode or settings.get("mode"))
-    if starting_balance is not None:
-        settings["walletBalance"] = starting_balance
-    settings["maxDailyDrawdown"] = max_daily_drawdown_pct * 100
-
-    mode_label = "📝 PAPER" if normalized_mode == "paper" else "🔴 LIVE"
-    print(f"\n{'='*60}")
-    print(f"  🔁 DAILY CYCLE: {ticker} ({mode_label} MODE)")
-    print(f"{'='*60}")
-
-    outcome = analyze_ticker(
-        ticker,
-        mode=normalized_mode,
-        settings=settings,
-        wallet_balance=wallet_balance,
+    """Legacy compatibility shim for the removed combined pipeline."""
+    raise NotImplementedError(
+        "run_daily_cycle() is legacy — use /analyze or /analyze/stream for analysis "
+        "and /trade for execution."
     )
-    payload = dict(outcome.payload)
-
-    if payload.get("state") == "market_closed":
-        print(f"\n  🔒 {payload.get('message', 'Markets are closed.')}")
-        return payload
-
-    action = payload.get("status", {}).get("action", "HOLD")
-    price = float(payload.get("technicals", {}).get("price") or 0.0)
-
-    print(f"\n  📊 ANALYSIS")
-    print(f"  {'─'*56}")
-    print(f"  Ticker      : {payload.get('ticker', ticker).upper()}")
-    print(f"  Price       : ${price:.2f}")
-    print(f"  Confidence  : {payload.get('confidence', 0):.0f}% ({payload.get('zone', 'UNKNOWN')})")
-    print(f"  Recommendation: {action}")
-
-    trade_result = None
-    if action in {"BUY", "SELL"} and price > 0:
-        quantity = int(payload.get("risk", {}).get("recommended_shares") or 0)
-        if action == "SELL":
-            current_position = outcome.current_position or get_position(ticker, normalized_mode)
-            if current_position:
-                quantity = int(current_position["shares"])
-
-        if quantity > 0:
-            trade_result = execute_trade(
-                ticker=ticker,
-                action=action,
-                mode=normalized_mode,
-                quantity=quantity,
-                price=price,
-            )
-            payload["trade_result"] = trade_result
-
-    return payload
 
 
 def main() -> None:
-    tickers = sys.argv[1:] if len(sys.argv) > 1 else ["NVDA"]
-    settings = _read_settings_local()
-    mode = normalize_mode(settings.get("mode"))
-    mode_label = "📝 PAPER" if mode == "paper" else "🔴 LIVE"
-    snapshot = get_tracker_snapshot(
-        starting_balance=float(settings.get("walletBalance", 100_000.0)),
-        mode=mode,
+    raise NotImplementedError(
+        "src.main is legacy — use /analyze or /analyze/stream for analysis and /trade "
+        "for execution."
     )
-    print(f"\n{'='*60}")
-    print(f"  🏛️  MARKET-MIDAS — {mode_label} TRADING")
-    print(f"  Tickers: {', '.join(tickers)}")
-    print(f"  Cash: ${snapshot['walletBalance']:,.2f}")
-    print(f"{'='*60}")
-
-    for ticker in tickers:
-        run_daily_cycle(
-            ticker,
-            mode=mode,
-            wallet_balance=snapshot["walletBalance"],
-            starting_balance=float(settings.get("walletBalance", 100_000.0)),
-            max_daily_drawdown_pct=float(settings.get("maxDailyDrawdown", 5.0)) / 100.0,
-        )
-
-    print(f"\n{'='*60}")
-    print(f"  📊 PORTFOLIO SUMMARY")
-    print(f"  {'─'*56}")
-    snapshot = get_tracker_snapshot(
-        starting_balance=float(settings.get("walletBalance", 100_000.0)),
-        mode=mode,
-    )
-    print(f"  Cash        : ${snapshot['walletBalance']:,.2f}")
-    for trade in snapshot["openPositions"]:
-        print(f"  Position    : {trade['quantity']} x {trade['ticker']} @ ${trade['price']:.2f}")
-    print(f"{'='*60}\n")
 
 
 if __name__ == "__main__":
