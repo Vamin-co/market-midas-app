@@ -47,6 +47,18 @@ BEARISH_KEYWORDS = [
     "overvalued", "bubble", "fraud", "bankruptcy", "default",
 ]
 
+
+def _compile_keyword_patterns(keywords: list[str]) -> list[re.Pattern[str]]:
+    """Compile whole-token keyword patterns to avoid substring false positives."""
+    return [
+        re.compile(rf"(?<!\w){re.escape(keyword)}(?!\w)", re.IGNORECASE)
+        for keyword in keywords
+    ]
+
+
+BULLISH_PATTERNS = _compile_keyword_patterns(BULLISH_KEYWORDS)
+BEARISH_PATTERNS = _compile_keyword_patterns(BEARISH_KEYWORDS)
+
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -263,14 +275,13 @@ class ResearcherAgent:
     def _classify_headline(title: str) -> str:
         """Classify a headline as bullish, bearish, or neutral.
 
-        Uses keyword lexicon matching with case-insensitive search.
+        Uses keyword lexicon matching with token boundaries so short
+        keywords like "ai" do not match inside unrelated words.
         If both bullish and bearish keywords match, the side with
         more matches wins. Ties → neutral.
         """
-        lower = title.lower()
-
-        bull_count = sum(1 for kw in BULLISH_KEYWORDS if kw in lower)
-        bear_count = sum(1 for kw in BEARISH_KEYWORDS if kw in lower)
+        bull_count = sum(1 for pattern in BULLISH_PATTERNS if pattern.search(title))
+        bear_count = sum(1 for pattern in BEARISH_PATTERNS if pattern.search(title))
 
         if bull_count > bear_count:
             return "bullish"

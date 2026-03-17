@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAppContext } from '@/context/AppContext';
+import { API_BASE_URL } from '@/lib/api';
 
 // ════════════════════════════════════════════════════════════════
 // Types
@@ -44,6 +45,7 @@ export interface UseSettingsReturn {
     stopLossThreshold: number;
     maxDailyDrawdown: number;
     defaultTradeSize: number;
+    maxPositionPercent: number;
     alertThreshold: number;
     riskSaveState: SaveState;
     riskError: string | null;
@@ -77,6 +79,7 @@ export interface UseSettingsReturn {
     setStopLoss: (val: number) => void;
     setMaxDrawdown: (val: number) => void;
     setDefaultTradeSize: (val: number) => void;
+    setMaxPositionPercent: (val: number) => void;
     saveRiskControls: () => Promise<void>;
 
     // Buying power section
@@ -93,7 +96,6 @@ export interface UseSettingsReturn {
 // Constants
 // ════════════════════════════════════════════════════════════════
 
-const BACKEND_URL = "http://localhost:8000";
 const SAVED_RESET_MS = 2000;
 
 // ════════════════════════════════════════════════════════════════
@@ -127,6 +129,7 @@ export function useSettings(): UseSettingsReturn {
     const [stopLossThreshold, setStopLossThresholdState] = useState(5);
     const [maxDailyDrawdown, setMaxDailyDrawdownState] = useState(5);
     const [defaultTradeSize, setDefaultTradeSizeState] = useState(1000);
+    const [maxPositionPercent, setMaxPositionPercentState] = useState(25);
     const [alertThreshold, setAlertThresholdState] = useState(5);
     const [riskSaveState, setRiskSaveState] = useState<SaveState>('idle');
     const [riskError, setRiskError] = useState<string | null>(null);
@@ -151,6 +154,7 @@ export function useSettings(): UseSettingsReturn {
         setStopLossThresholdState(userPreferences.stopLossThreshold);
         setMaxDailyDrawdownState(userPreferences.maxDailyDrawdown);
         setDefaultTradeSizeState(userPreferences.defaultTradeSize);
+        setMaxPositionPercentState(userPreferences.maxPositionPercent * 100);
         setAlertThresholdState(userPreferences.alertThreshold);
         setWalletBalanceState(userPreferences.walletBalance);
 
@@ -171,7 +175,7 @@ export function useSettings(): UseSettingsReturn {
             // Fetch providers
             try {
                 setProvidersLoading(true);
-                const res = await fetch(`${BACKEND_URL}/settings/providers`);
+                const res = await fetch(`${API_BASE_URL}/settings/providers`);
                 if (res.ok) {
                     const data = await res.json();
                     if (!cancelled) setProviders(data.providers);
@@ -184,7 +188,7 @@ export function useSettings(): UseSettingsReturn {
 
             // Fetch full settings to get provider, model, mode
             try {
-                const res = await fetch(`${BACKEND_URL}/settings`);
+                const res = await fetch(`${API_BASE_URL}/settings`);
                 if (res.ok) {
                     const data = await res.json();
                     if (!cancelled) {
@@ -262,7 +266,7 @@ export function useSettings(): UseSettingsReturn {
                 payload.apiKey = apiKey;
             }
 
-            const res = await fetch(`${BACKEND_URL}/settings`, {
+            const res = await fetch(`${API_BASE_URL}/settings`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
@@ -296,7 +300,7 @@ export function useSettings(): UseSettingsReturn {
     const saveModeToBackend = useCallback(async (newMode: 'paper' | 'live') => {
         setTradingSaveState('saving');
         try {
-            const res = await fetch(`${BACKEND_URL}/settings`, {
+            const res = await fetch(`${API_BASE_URL}/settings`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ mode: newMode }),
@@ -361,6 +365,10 @@ export function useSettings(): UseSettingsReturn {
         setDefaultTradeSizeState(val);
     }, []);
 
+    const setMaxPositionPercent = useCallback((val: number) => {
+        setMaxPositionPercentState(val);
+    }, []);
+
     const saveRiskControls = useCallback(async () => {
         setRiskSaveState('saving');
         try {
@@ -368,6 +376,7 @@ export function useSettings(): UseSettingsReturn {
                 stopLossThreshold,
                 maxDailyDrawdown,
                 defaultTradeSize,
+                maxPositionPercent: Math.max(0, Math.min(maxPositionPercent, 100)) / 100,
                 alertThreshold,
             };
 
@@ -379,7 +388,15 @@ export function useSettings(): UseSettingsReturn {
             setRiskSaveState('error');
             setRiskError(err.message || 'Failed to save risk controls');
         }
-    }, [stopLossThreshold, maxDailyDrawdown, defaultTradeSize, alertThreshold, updatePreferences, autoReset]);
+    }, [
+        stopLossThreshold,
+        maxDailyDrawdown,
+        defaultTradeSize,
+        maxPositionPercent,
+        alertThreshold,
+        updatePreferences,
+        autoReset,
+    ]);
 
     // ════════════════════════════════════════════════════════════
     // Buying power section
@@ -418,13 +435,14 @@ export function useSettings(): UseSettingsReturn {
                 apiKey: '',
                 walletBalance: 100_000,
                 defaultTradeSize: 1_000,
+                maxPositionPercent: 0.25,
                 alertThreshold: 5,
                 maxDailyDrawdown: 5,
                 stopLossThreshold: 5,
                 mode: 'paper',
             };
 
-            const res = await fetch(`${BACKEND_URL}/settings`, {
+            const res = await fetch(`${API_BASE_URL}/settings`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(defaults),
@@ -473,6 +491,7 @@ export function useSettings(): UseSettingsReturn {
         stopLossThreshold,
         maxDailyDrawdown,
         defaultTradeSize,
+        maxPositionPercent,
         alertThreshold,
         riskSaveState,
         riskError,
@@ -504,6 +523,7 @@ export function useSettings(): UseSettingsReturn {
         setStopLoss,
         setMaxDrawdown,
         setDefaultTradeSize,
+        setMaxPositionPercent,
         saveRiskControls,
 
         // Functions — Buying power

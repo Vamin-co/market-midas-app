@@ -73,7 +73,7 @@ class DataIngestion:
     def fetch_and_store(
         self,
         ticker: str,
-        period: str = "6mo",
+        period: str = "1y",
     ) -> dict[str, Any]:
         """Fetch OHLCV data and store as an immutable CSV.
 
@@ -82,7 +82,7 @@ class DataIngestion:
 
         Args:
             ticker: Stock ticker symbol (e.g., 'NVDA').
-            period: yfinance period string (default '6mo').
+            period: yfinance period string (default '1y').
 
         Returns:
             dict with:
@@ -93,6 +93,8 @@ class DataIngestion:
                 - fetch_timestamp: str — ISO-8601 fetch time
                 - valid: bool — passed ALCOA+ validation
         """
+        # SMA-200 and crossover logic need roughly 200 trading sessions,
+        # so the default history window must cover at least a full trading year.
         # Prune old cache files before fetching
         self.prune_data_cache()
 
@@ -267,12 +269,12 @@ class DataIngestion:
             "cached_filename": latest_file.name,
         }
 
-    def fetch_ohlcv(self, ticker: str, period: str = "6mo") -> pd.DataFrame:
+    def fetch_ohlcv(self, ticker: str, period: str = "1y") -> pd.DataFrame:
         """Convenience method: fetch OHLCV, store to disk, return DataFrame.
 
         Args:
             ticker: Stock ticker symbol.
-            period: Data period (default '6mo').
+            period: Data period (default '1y').
 
         Returns:
             Clean pandas DataFrame with Date index and OHLCV columns.

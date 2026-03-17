@@ -1,13 +1,18 @@
 # Market-Midas Dependencies
 # Core
+fastapi>=0.115.0
 pandas>=2.2.0
+requests>=2.32.0
 yfinance>=0.2.36
 ta>=0.11.0
+litellm>=1.60.0
 
 # Browser automation (backup)
 playwright>=1.41.0
 
 # Configuration
+pandas_market_calendars>=4.4.0
+pytz>=2024.1
 python-dotenv>=1.0.0
 
 # Testing
@@ -15,3 +20,4 @@ pytest>=8.0.0
 
 # Phase 4: Background polling
 apscheduler>=3.10.0
+uvicorn>=0.34.0

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { API_BASE_URL } from '@/lib/api';
 
 // ════════════════════════════════════════════════════════════════
 // Route & Onboarding Types (Phase 2 — unchanged)
@@ -12,6 +13,21 @@ export type OnboardingStep = "WELCOME" | "API_KEY" | "COMPLIANCE" | "COMPLETED";
 export interface DebateArgument {
     claim?: string;
     evidence?: string;
+}
+
+export interface AnalysisStreamState {
+    ticker: string | null;
+    phase: 'IDLE' | 'CONNECTING' | 'ANALYSIS' | 'TECHNICALS' | 'SENTIMENT' | 'BULL' | 'BEAR' | 'VERDICT' | 'COMPLETE' | 'ERROR';
+    bullText: string;
+    bearText: string;
+    bullScore: number;
+    bearScore: number;
+    winner: "BULL" | "BEAR" | "DRAW" | "NONE";
+    recommendation: string;
+    isStreaming: boolean;
+    isBullStreaming: boolean;
+    isBearStreaming: boolean;
+    error: string | null;
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -108,34 +124,22 @@ export interface Alert {
     createdAt?: string;
 }
 
-export interface TrackerData {
-    id: string;
-    timestamp: string;
-    action: "BUY" | "SELL";
-    ticker: string;
-    quantity: number;
-    price: number;
-    dollar_amount: number;
-    mode: "paper" | "live";
-    status: TradeStatus;
-    pnl?: number;
-    closedAt?: string;
-    exitPrice?: number;
-}
+export type TrackerTrade = PaperTrade;
 
-export interface TrackerData {
+export interface TrackerSnapshot {
     walletBalance: number;
     startingBalance: number;
     totalInvested: number;
     realizedPnl: number;
-    openPositions: PaperTrade[];
-    closedPositions: PaperTrade[];
+    openPositions: TrackerTrade[];
+    closedPositions: TrackerTrade[];
     totalClosedCount: number;
 }
 
 export interface UserPreferences {
     walletBalance: number;
     defaultTradeSize: number;
+    maxPositionPercent: number;
     alertThreshold: number;
     maxDailyDrawdown: number;
     stopLossThreshold: number;
@@ -149,6 +153,7 @@ export interface UserPreferences {
 const DEFAULT_PREFERENCES: UserPreferences = {
     walletBalance: 100_000,
     defaultTradeSize: 1_000,
+    maxPositionPercent: 0.25,
     alertThreshold: 5,
     maxDailyDrawdown: 5,
     stopLossThreshold: 5,
@@ -175,14 +180,17 @@ interface AppContextType {
     setComplianceAccepted: (accepted: boolean) => void;
     runData: RunData | null;
     setRunData: (data: RunData | null) => void;
+    analysisStream: AnalysisStreamState;
+    setAnalysisStream: React.Dispatch<React.SetStateAction<AnalysisStreamState>>;
+    resetAnalysisStream: () => void;
     executionMode: "PAPER" | "LIVE";
     setExecutionMode: (mode: "PAPER" | "LIVE") => void;
     isAuthenticated: boolean;
     setIsAuthenticated: (auth: boolean) => void;
 
     // Phase 3: Tracker
-    trackerData: TrackerData | null;
-    refreshTracker: () => Promise<void>;
+    trackerData: TrackerSnapshot | null;
+    refreshTracker: (options?: { closedPage?: number; closedPerPage?: number }) => Promise<void>;
 
     // Phase 3: Settings (server-backed)
     userPreferences: UserPreferences;
@@ -196,7 +204,20 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const BACKEND_URL = "http://localhost:8000";
+const DEFAULT_ANALYSIS_STREAM: AnalysisStreamState = {
+    ticker: null,
+    phase: 'IDLE',
+    bullText: '',
+    bearText: '',
+    bullScore: 0,
+    bearScore: 0,
+    winner: 'NONE',
+    recommendation: '',
+    isStreaming: false,
+    isBullStreaming: false,
+    isBearStreaming: false,
+    error: null,
+};
 
 // ════════════════════════════════════════════════════════════════
 // Provider
@@ -209,27 +230,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const [apiKey, setApiKey] = useState("");
     const [complianceAccepted, setComplianceAccepted] = useState(false);
     const [runData, setRunData] = useState<RunData | null>(null);
+    const [analysisStream, setAnalysisStream] = useState<AnalysisStreamState>(DEFAULT_ANALYSIS_STREAM);
     const [executionMode, setExecutionMode] = useState<"PAPER" | "LIVE">("PAPER");
     const [isAuthenticated, setIsAuthenticated] = useState(false);
 
     // Phase 3 state
-    const [trackerData, setTrackerData] = useState<TrackerData | null>(null);
+    const [trackerData, setTrackerData] = useState<TrackerSnapshot | null>(null);
     const [userPreferences, setUserPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES);
 
     // Phase 6 state
     const [alerts, setAlerts] = useState<Alert[]>([]);
 
+    const resetAnalysisStream = useCallback(() => {
+        setAnalysisStream(DEFAULT_ANALYSIS_STREAM);
+    }, []);
+
     // ── Settings (server-backed) ──
 
     const refreshPreferences = useCallback(async () => {
         try {
-            const res = await fetch(`${BACKEND_URL}/settings`);
+            const res = await fetch(`${API_BASE_URL}/settings`);
             if (res.ok) {
                 const data = await res.json();
                 const modeValue = data.mode === 'live' ? 'live' : 'paper';
                 setUserPreferences({
                     walletBalance: data.walletBalance ?? DEFAULT_PREFERENCES.walletBalance,
                     defaultTradeSize: data.defaultTradeSize ?? DEFAULT_PREFERENCES.defaultTradeSize,
+                    maxPositionPercent: data.maxPositionPercent ?? DEFAULT_PREFERENCES.maxPositionPercent,
                     alertThreshold: data.alertThreshold ?? DEFAULT_PREFERENCES.alertThreshold,
                     maxDailyDrawdown: data.maxDailyDrawdown ?? DEFAULT_PREFERENCES.maxDailyDrawdown,
                     stopLossThreshold: data.stopLossThreshold ?? DEFAULT_PREFERENCES.stopLossThreshold,
@@ -252,6 +279,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             const payload = {
                 walletBalance: prefs.walletBalance ?? userPreferences.walletBalance,
                 defaultTradeSize: prefs.defaultTradeSize ?? userPreferences.defaultTradeSize,
+                maxPositionPercent: prefs.maxPositionPercent ?? userPreferences.maxPositionPercent,
                 alertThreshold: prefs.alertThreshold ?? userPreferences.alertThreshold,
                 maxDailyDrawdown: prefs.maxDailyDrawdown ?? userPreferences.maxDailyDrawdown,
                 stopLossThreshold: prefs.stopLossThreshold ?? userPreferences.stopLossThreshold,
@@ -260,7 +288,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 model: prefs.model ?? userPreferences.model,
                 mode: prefs.mode ?? userPreferences.mode,
             };
-            const res = await fetch(`${BACKEND_URL}/settings`, {
+            const res = await fetch(`${API_BASE_URL}/settings`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
@@ -275,10 +303,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     // ── Tracker ──
 
-    const refreshTracker = useCallback(async () => {
+    const refreshTracker = useCallback(async (options?: { closedPage?: number; closedPerPage?: number }) => {
         try {
-            const balance = userPreferences.walletBalance;
-            const res = await fetch(`/api/ledger?balance=${balance}`);
+            const params = new URLSearchParams({
+                mode: userPreferences.mode,
+                closed_page: String(options?.closedPage ?? 1),
+                closed_per_page: String(options?.closedPerPage ?? 10),
+            });
+            const res = await fetch(`${API_BASE_URL}/portfolio?${params.toString()}`);
             if (res.ok) {
                 const data = await res.json();
                 setTrackerData(data);
@@ -286,7 +318,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         } catch (err) {
             console.error("Failed to fetch tracker data:", err);
         }
-    }, [userPreferences.walletBalance]);
+    }, [userPreferences.mode]);
 
     // ── Alerts ──
 
@@ -322,6 +354,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             apiKey, setApiKey,
             complianceAccepted, setComplianceAccepted,
             runData, setRunData,
+            analysisStream, setAnalysisStream, resetAnalysisStream,
             executionMode, setExecutionMode,
             isAuthenticated, setIsAuthenticated,
             trackerData, refreshTracker,

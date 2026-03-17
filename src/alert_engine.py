@@ -20,6 +20,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, TypedDict
 
+from src.portfolio import store as portfolio_store
+
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -51,17 +53,8 @@ def _load_open_trades() -> list[dict]:
 
     This function is READ-ONLY — it never writes to the file.
     """
-    if not TRADES_FILE.exists():
-        return []
-    try:
-        data = json.loads(TRADES_FILE.read_text())
-        if not isinstance(data, list):
-            logger.warning("paper_trades.json root is not a list, returning [].")
-            return []
-        return [t for t in data if t.get("status") == "open"]
-    except (json.JSONDecodeError, OSError) as exc:
-        logger.warning("paper_trades.json unreadable (%s), returning [].", exc)
-        return []
+    portfolio_store.TRADES_FILE = TRADES_FILE
+    return portfolio_store.get_open_trades("paper")
 
 
 # ════════════════════════════════════════════════════════════════

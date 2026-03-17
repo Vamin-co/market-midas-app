@@ -37,6 +37,7 @@ export default function SettingsPage() {
     const [editStopLoss, setEditStopLoss] = useState(false);
     const [editDrawdown, setEditDrawdown] = useState(false);
     const [editTradeSize, setEditTradeSize] = useState(false);
+    const [editMaxPositionPct, setEditMaxPositionPct] = useState(false);
 
     const currentModels = s.providers?.[s.selectedProvider]?.models || [];
 
@@ -256,6 +257,16 @@ export default function SettingsPage() {
                             onClickDisplay={() => setEditTradeSize(true)}
                             onChange={(v) => s.setDefaultTradeSize(v)}
                             onSave={() => { s.saveRiskControls(); setEditTradeSize(false); }}
+                        />
+
+                        <RiskField
+                            label="Max Position Percent"
+                            value={s.maxPositionPercent}
+                            unit="%"
+                            editing={editMaxPositionPct}
+                            onClickDisplay={() => setEditMaxPositionPct(true)}
+                            onChange={(v) => s.setMaxPositionPercent(v)}
+                            onSave={() => { s.saveRiskControls(); setEditMaxPositionPct(false); }}
                         />
                     </div>
 

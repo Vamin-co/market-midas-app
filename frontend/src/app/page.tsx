@@ -226,7 +226,7 @@ function ResultsState({ runData, clearRunData }: { runData: any, clearRunData: (
     const rationale = isBuy ? runData.debate?.bull_argument : (isSell ? runData.debate?.bear_argument : "Market conditions do not present a clear asymmetric opportunity. The opposing agents reached a stalemate or confidence levels were below the required threshold for capital deployment.");
 
     return (
-        <div className="flex flex-col items-center w-full max-w-[800px] px-6 pt-10 gap-3 overflow-y-auto h-full scrollbar-none pb-32">
+        <div className="flex flex-col items-center w-full max-w-[800px] px-6 pt-8 gap-3 pb-12">
 
             <div className="w-full relative flex items-center justify-center mb-2 animate-in fade-in duration-500">
                 <h2 className="font-sans text-[#1C1917]/50 text-[10px] font-bold uppercase tracking-widest">

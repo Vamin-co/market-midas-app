@@ -1,28 +1,76 @@
 import { NextResponse } from 'next/server';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import util from 'util';
 import path from 'path';
 
-const execAsync = util.promisify(exec);
+const execFileAsync = util.promisify(execFile);
+
+const ALLOWED_ACTIONS = new Set(['BUY', 'SELL']);
+const ALLOWED_MODES = new Set(['PAPER', 'LIVE']);
+const TICKER_PATTERN = /^[A-Z][A-Z0-9.-]{0,9}$/;
+
+function parseNonNegativeNumber(value: unknown): number | null {
+    if (value == null || value === '') {
+        return 0;
+    }
+
+    const parsed = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+        return null;
+    }
+
+    return parsed;
+}
 
 export async function POST(request: Request) {
     try {
-        const body = await request.json();
-        const { action, ticker, quantity, price } = body;
+        const body: unknown = await request.json();
+        const payload = (body && typeof body === 'object') ? body as Record<string, unknown> : {};
 
-        if (!action || !ticker) {
+        const rawAction = typeof payload.action === 'string' ? payload.action.toUpperCase() : '';
+        const rawTicker = typeof payload.ticker === 'string' ? payload.ticker.toUpperCase() : '';
+        const rawMode = typeof payload.mode === 'string' ? payload.mode.toUpperCase() : undefined;
+        const quantity = parseNonNegativeNumber(payload.quantity);
+        const price = parseNonNegativeNumber(payload.price);
+
+        if (!rawAction || !rawTicker) {
             return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
+        }
+
+        if (!ALLOWED_ACTIONS.has(rawAction)) {
+            return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+        }
+
+        if (!TICKER_PATTERN.test(rawTicker)) {
+            return NextResponse.json({ error: 'Invalid ticker' }, { status: 400 });
+        }
+
+        if (rawMode && !ALLOWED_MODES.has(rawMode)) {
+            return NextResponse.json({ error: 'Invalid mode' }, { status: 400 });
+        }
+
+        if (quantity == null || price == null) {
+            return NextResponse.json({ error: 'Invalid quantity or price' }, { status: 400 });
         }
 
         // Path to the python project root
         const projectRoot = path.join(process.cwd(), '..');
+        const args = [
+            '-m',
+            'src.execute_trade',
+            '--ticker',
+            rawTicker,
+            '--action',
+            rawAction,
+            '--qty',
+            String(quantity),
+            '--price',
+            String(price),
+        ];
 
-        // Simulated Playwright execution via our dummy python script
-        const cmd = `python -m src.execute_trade --ticker ${ticker} --action ${action} --qty ${quantity || 0} --price ${price || 0}`;
+        console.log('Spawning Python child process:', { command: 'python', args });
 
-        console.log('Spawning Python child process:', cmd);
-
-        const { stdout, stderr } = await execAsync(cmd, { cwd: projectRoot });
+        const { stdout, stderr } = await execFileAsync('python', args, { cwd: projectRoot });
 
         return NextResponse.json({ success: true, stdout, stderr });
     } catch (error: any) {

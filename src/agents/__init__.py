@@ -28,7 +28,7 @@ class AgentTeam:
     def __init__(self) -> None:
         self.analyst = AnalystAgent()
         self.researcher = ResearcherAgent()
-        self.trader = TraderAgent()
+        self.trader = TraderAgent(mode="paper")
         logger.info("AgentTeam initialized with all three sub-agents.")
 
     def run_pipeline(self, ticker: str) -> dict[str, Any]:

@@ -1,33 +1,82 @@
 """
 Risk Manager.
 
-Enforces position sizing and stop-loss constraints from PRD §4.3:
-  - Max 5% of total account value per single trade.
-  - Automatic stop-loss at 5% below entry price.
+Enforces position sizing and stop-loss constraints from local settings:
+  - Max position size from config/settings.json maxPositionPercent.
+  - Automatic stop-loss from config/settings.json stopLossThreshold.
   - Validates sufficient account balance before generating buy signals.
 """
 
+import json
 import logging
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+SETTINGS_FILE = PROJECT_ROOT / "config" / "settings.json"
+DEFAULT_SETTINGS = {
+    "walletBalance": 100_000.0,
+    "defaultTradeSize": 1_000.0,
+    "maxPositionPercent": 0.25,
+    "stopLossThreshold": 5.0,
+}
+
+
+def _read_risk_settings() -> dict[str, float]:
+    """Load risk-related settings from config/settings.json with safe fallbacks."""
+    try:
+        if SETTINGS_FILE.exists():
+            data = json.loads(SETTINGS_FILE.read_text())
+            if isinstance(data, dict):
+                return {**DEFAULT_SETTINGS, **data}
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        logger.warning("Failed to read risk settings (%s). Using defaults.", exc)
+    return dict(DEFAULT_SETTINGS)
 
 
 class RiskManager:
     """Manages risk constraints for all trades.
 
     Attributes:
-        max_position_pct: Maximum percentage of account to risk per trade.
+        max_position_dollars: Maximum dollar amount to risk per trade.
+        max_position_pct: Maximum fraction of account value allowed per trade.
         stop_loss_pct: Percentage below entry price for automatic stop-loss.
     """
 
-    MAX_POSITION_PCT: float = 0.25  # 25% of account value (relaxed from 5%)
-    STOP_LOSS_PCT: float = 0.05     # 5% below entry
+    MAX_POSITION_PCT: float = 0.05
+    STOP_LOSS_PCT: float = 0.05
 
     def __init__(self) -> None:
+        settings = _read_risk_settings()
+        wallet_balance = float(
+            settings.get("walletBalance", DEFAULT_SETTINGS["walletBalance"])
+            or DEFAULT_SETTINGS["walletBalance"]
+        )
+        default_trade_size = float(
+            settings.get("defaultTradeSize", DEFAULT_SETTINGS["defaultTradeSize"])
+            or DEFAULT_SETTINGS["defaultTradeSize"]
+        )
+        max_position_percent = float(
+            settings.get("maxPositionPercent", DEFAULT_SETTINGS["maxPositionPercent"])
+            or DEFAULT_SETTINGS["maxPositionPercent"]
+        )
+        stop_loss_threshold = float(
+            settings.get("stopLossThreshold", DEFAULT_SETTINGS["stopLossThreshold"])
+            or DEFAULT_SETTINGS["stopLossThreshold"]
+        )
+
+        # Keep default trade size for non-cap defaults while sizing caps use maxPositionPercent.
+        self.default_trade_size = max(0.0, default_trade_size)
+        self.max_position_dollars = self.default_trade_size
+        self.MAX_POSITION_PCT = max(0.0, min(max_position_percent, 1.0))
+        self.STOP_LOSS_PCT = max(0.0, min(stop_loss_threshold, 100.0)) / 100.0
+
         logger.info(
-            "RiskManager initialized (max_position=%.0f%%, stop_loss=%.0f%%).",
+            "RiskManager initialized (max_position=%.2f%%, default_trade_size=$%.2f, stop_loss=%.2f%%).",
             self.MAX_POSITION_PCT * 100,
+            self.default_trade_size,
             self.STOP_LOSS_PCT * 100,
         )
 
@@ -46,13 +95,14 @@ class RiskManager:
                 - max_shares: int — max whole shares to purchase
                 - position_pct: float — actual percentage of account
         """
-        max_dollars = account_value * self.MAX_POSITION_PCT
+        max_dollars = max(0.0, account_value * self.MAX_POSITION_PCT)
+        position_pct = (max_dollars / account_value) if account_value > 0 else 0.0
         max_shares = int(max_dollars // entry_price) if entry_price > 0 else 0
 
         result = {
             "max_dollars": round(max_dollars, 2),
             "max_shares": max_shares,
-            "position_pct": self.MAX_POSITION_PCT,
+            "position_pct": round(position_pct, 4),
         }
         logger.info("Position size: $%.2f (%d shares at $%.2f)",
                      result["max_dollars"], result["max_shares"], entry_price)
@@ -65,7 +115,7 @@ class RiskManager:
             entry_price: Price per share at entry.
 
         Returns:
-            Stop-loss price (5% below entry).
+            Stop-loss price using the configured stop-loss percentage.
         """
         stop_loss = round(entry_price * (1 - self.STOP_LOSS_PCT), 2)
         logger.info("Stop-loss for entry $%.2f → $%.2f", entry_price, stop_loss)
@@ -90,13 +140,14 @@ class RiskManager:
         """
         trade_value = entry_price * shares
         position_pct = trade_value / account_value if account_value > 0 else float("inf")
+        max_trade_value = max(0.0, account_value * self.MAX_POSITION_PCT)
 
-        if position_pct > self.MAX_POSITION_PCT:
+        if trade_value > max_trade_value:
             return {
                 "valid": False,
                 "reason": (
-                    f"Trade value ${trade_value:.2f} exceeds {self.MAX_POSITION_PCT*100:.0f}% "
-                    f"max (${account_value * self.MAX_POSITION_PCT:.2f})."
+                    f"Trade value ${trade_value:.2f} exceeds configured max "
+                    f"(${max_trade_value:.2f})."
                 ),
                 "trade_value": trade_value,
                 "position_pct": position_pct,
@@ -180,4 +231,3 @@ class RiskManager:
             "max_drawdown_pct": max_drawdown_pct,
             "reason": f"Drawdown {drawdown_pct*100:.1f}% within {max_drawdown_pct*100:.0f}% limit.",
         }
-

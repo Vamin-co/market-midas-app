@@ -19,11 +19,13 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+EventSink = Callable[[str, dict[str, Any]], None]
 
 
 @dataclass
@@ -390,6 +392,7 @@ def run_debate(
     df: pd.DataFrame,
     signal: dict[str, Any],
     sentiment_context: dict[str, Any] | None = None,
+    event_sink: EventSink | None = None,
 ) -> DebateResult:
     """Spawn Bull and Bear agents, collect arguments, and judge the debate.
 
@@ -431,6 +434,23 @@ def run_debate(
     if bear_args:
         bear_best = max(bear_args, key=lambda a: a.strength)
 
+    if event_sink is not None and bull_best is not None:
+        event_sink(
+            "bull_turn",
+            {
+                "text": f"{bull_best.claim} Evidence: {bull_best.evidence}",
+                "score": round(bull_total, 1),
+            },
+        )
+    if event_sink is not None and bear_best is not None:
+        event_sink(
+            "bear_turn",
+            {
+                "text": f"{bear_best.claim} Evidence: {bear_best.evidence}",
+                "score": round(bear_total, 1),
+            },
+        )
+
     # Build markdown transcript
     transcript = _build_transcript(
         ticker, signal, bull_args, bear_args,
@@ -456,6 +476,16 @@ def run_debate(
         "Debate for %s: %s wins (%s %.0f vs %s %.0f) → %s",
         ticker, winner, bull.name, bull_total, bear.name, bear_total, recommendation,
     )
+    if event_sink is not None:
+        event_sink(
+            "verdict",
+            {
+                "winner": winner,
+                "recommendation": recommendation,
+                "bull_score": round(bull_total, 1),
+                "bear_score": round(bear_total, 1),
+            },
+        )
     return result
 
 

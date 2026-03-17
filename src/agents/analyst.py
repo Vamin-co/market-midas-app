@@ -41,14 +41,14 @@ class AnalystAgent:
         self.data_ingestion = DataIngestion()
         logger.info("AnalystAgent initialized.")
 
-    def analyze(self, ticker: str, period: str = "6mo") -> dict[str, Any]:
+    def analyze(self, ticker: str, period: str = "1y") -> dict[str, Any]:
         """Run full technical analysis on a given ticker.
 
         Fetches OHLCV data, calculates indicators, and generates signals.
 
         Args:
             ticker: Stock ticker symbol (e.g., 'NVDA', 'SPY').
-            period: Data period for yfinance (default '6mo').
+            period: Data period for yfinance (default '1y').
 
         Returns:
             dict containing:
@@ -195,11 +195,12 @@ class AnalystAgent:
         )
 
         # SMA cross detection (current bar vs previous bar)
-        sma_50_valid = df["SMA_50"].notna() & df["SMA_200"].notna()
-        sma_above = (df["SMA_50"] > df["SMA_200"]) & sma_50_valid
+        sma_valid = df["SMA_50"].notna() & df["SMA_200"].notna()
+        sma_above = (df["SMA_50"] > df["SMA_200"]) & sma_valid
+        prev_sma_valid = sma_valid.shift(1, fill_value=False)
         sma_above_prev = sma_above.shift(1, fill_value=False)
-        df["golden_cross"] = sma_above & ~sma_above_prev
-        df["death_cross"] = ~sma_above & sma_above_prev & sma_50_valid
+        df["golden_cross"] = sma_valid & prev_sma_valid & sma_above & ~sma_above_prev
+        df["death_cross"] = sma_valid & prev_sma_valid & ~sma_above & sma_above_prev
 
         buy_count = (df["signal"] == "BUY").sum()
         sell_count = (df["signal"] == "SELL").sum()
@@ -250,4 +251,3 @@ class AnalystAgent:
             "latest_close": None,
             "using_cached_price": False,
         }
-

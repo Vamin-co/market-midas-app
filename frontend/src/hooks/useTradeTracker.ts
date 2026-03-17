@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import { useAppContext, PaperTrade } from '@/context/AppContext';
+import { useAppContext, TrackerTrade } from '@/context/AppContext';
+import { API_BASE_URL } from '@/lib/api';
 
 export function useTradeTracker() {
     const { trackerData, refreshTracker, userPreferences, updatePreferences } = useAppContext();
@@ -29,7 +30,7 @@ export function useTradeTracker() {
         if (!trackerData?.openPositions.length) return;
         const tickers = [...new Set(trackerData.openPositions.map(t => t.ticker))].join(',');
         try {
-            const res = await fetch(`http://localhost:8000/prices?tickers=${tickers}`);
+            const res = await fetch(`${API_BASE_URL}/prices?tickers=${tickers}`);
             if (res.ok) {
                 setLivePrices(await res.json());
             }
@@ -44,8 +45,8 @@ export function useTradeTracker() {
 
     // Refetch with pagination changes
     useEffect(() => {
-        refreshTracker();
-    }, [closedPage]); // eslint-disable-line react-hooks/exhaustive-deps
+        refreshTracker({ closedPage, closedPerPage });
+    }, [closedPage, closedPerPage, refreshTracker]);
 
     // ── Handlers ──
 
@@ -53,10 +54,10 @@ export function useTradeTracker() {
         const val = parseFloat(editableBalance);
         if (!isNaN(val) && val >= 0) {
             await updatePreferences({ walletBalance: val });
-            await refreshTracker();
+            await refreshTracker({ closedPage, closedPerPage });
         }
         setIsEditingBalance(false);
-    }, [editableBalance, updatePreferences, refreshTracker]);
+    }, [editableBalance, updatePreferences, refreshTracker, closedPage, closedPerPage]);
 
     const startEditingBalance = useCallback(() => {
         if (trackerData) {
@@ -74,7 +75,7 @@ export function useTradeTracker() {
         setActionError(null);
 
         try {
-            const res = await fetch('/api/ledger/sell', {
+            const res = await fetch(`${API_BASE_URL}/portfolio/close`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ tradeId }),
@@ -95,12 +96,12 @@ export function useTradeTracker() {
                 return;
             }
 
-            await refreshTracker();
+            await refreshTracker({ closedPage, closedPerPage });
         } catch {
             setActionError('Network error closing position');
         }
         setClosingTradeId(null);
-    }, [refreshTracker]);
+    }, [refreshTracker, closedPage, closedPerPage]);
 
     const handleManualPriceSubmit = useCallback(async (tradeId: string) => {
         const price = parseFloat(manualPriceInput);
@@ -110,13 +111,13 @@ export function useTradeTracker() {
         }
         setClosingTradeId(tradeId);
         try {
-            const res = await fetch('/api/ledger/sell', {
+            const res = await fetch(`${API_BASE_URL}/portfolio/close`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ tradeId, manualPrice: price }),
             });
             if (res.ok) {
-                await refreshTracker();
+                await refreshTracker({ closedPage, closedPerPage });
                 setManualPriceTradeId(null);
                 setManualPriceInput('');
             } else {
@@ -127,7 +128,7 @@ export function useTradeTracker() {
             setActionError('Network error');
         }
         setClosingTradeId(null);
-    }, [manualPriceInput, refreshTracker]);
+    }, [manualPriceInput, refreshTracker, closedPage, closedPerPage]);
 
     const handleMarkSold = useCallback(async (tradeId: string) => {
         const price = parseFloat(markSoldPrice);
@@ -137,13 +138,13 @@ export function useTradeTracker() {
         }
         setClosingTradeId(tradeId);
         try {
-            const res = await fetch('/api/ledger/mark-sold', {
+            const res = await fetch(`${API_BASE_URL}/portfolio/mark-sold`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ tradeId, sellPrice: price }),
             });
             if (res.ok) {
-                await refreshTracker();
+                await refreshTracker({ closedPage, closedPerPage });
                 setMarkSoldTradeId(null);
                 setMarkSoldPrice('');
             } else {
@@ -154,7 +155,7 @@ export function useTradeTracker() {
             setActionError('Network error');
         }
         setClosingTradeId(null);
-    }, [markSoldPrice, refreshTracker]);
+    }, [markSoldPrice, refreshTracker, closedPage, closedPerPage]);
 
     const cancelManualPrice = useCallback(() => {
         setManualPriceTradeId(null);
@@ -185,7 +186,7 @@ export function useTradeTracker() {
         return val >= 0 ? `+${formatted}` : `-${formatted}`;
     }, [formatCurrency]);
 
-    const getUnrealizedPnl = useCallback((trade: PaperTrade) => {
+    const getUnrealizedPnl = useCallback((trade: TrackerTrade) => {
         const liveData = livePrices[trade.ticker];
         if (!liveData?.price) return null;
         return Math.round((liveData.price - trade.price) * trade.quantity * 100) / 100;

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAppContext } from '@/context/AppContext';
+import { API_BASE_URL } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 
 export function useExecutionInterlock(ticker: string, action: string = 'BUY') {
@@ -35,7 +36,8 @@ export function useExecutionInterlock(ticker: string, action: string = 'BUY') {
         return (dollars / userPreferences.walletBalance) * 100;
     }, [positionDollars, userPreferences.walletBalance]);
 
-    const isOverCap = positionPct > 25;
+    const maxPositionPct = userPreferences.maxPositionPercent * 100;
+    const isOverCap = positionPct > maxPositionPct;
     const stopLoss = riskData?.stop_loss;
 
     const handleAbort = useCallback(() => {
@@ -52,7 +54,7 @@ export function useExecutionInterlock(ticker: string, action: string = 'BUY') {
 
         if (isOverCap) {
             setStatus('ERROR');
-            setMessage('Position size exceeds 25% cap. Reduce to continue.');
+            setMessage(`Position size exceeds ${maxPositionPct}% cap. Reduce to continue.`);
             return;
         }
 
@@ -61,12 +63,13 @@ export function useExecutionInterlock(ticker: string, action: string = 'BUY') {
 
         try {
             const dollars = parseFloat(positionDollars);
-            const res = await fetch('/api/execute', {
+            const res = await fetch(`${API_BASE_URL}/trade`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     action,
                     ticker,
+                    mode: userPreferences.mode.toUpperCase(),
                     quantity: computedShares,
                     price: currentPrice,
                     dollar_amount: dollars,
@@ -74,14 +77,14 @@ export function useExecutionInterlock(ticker: string, action: string = 'BUY') {
                 signal: abortControllerRef.current.signal
             });
             const data = await res.json();
-            if (data.success) {
+            if (res.ok && !data.detail) {
                 setStatus('SUCCESS');
                 setMessage('Trade executed successfully.');
                 // Refresh tracker data
                 await refreshTracker();
             } else {
                 setStatus('ERROR');
-                setMessage(data.error || 'Execution failed.');
+                setMessage(data.detail || data.error || 'Execution failed.');
             }
         } catch (e: any) {
             if (e.name === 'AbortError') {
@@ -92,7 +95,18 @@ export function useExecutionInterlock(ticker: string, action: string = 'BUY') {
         } finally {
             abortControllerRef.current = null;
         }
-    }, [action, ticker, status, positionDollars, computedShares, currentPrice, isOverCap, refreshTracker]);
+    }, [
+        action,
+        ticker,
+        status,
+        positionDollars,
+        computedShares,
+        currentPrice,
+        isOverCap,
+        maxPositionPct,
+        refreshTracker,
+        userPreferences.mode,
+    ]);
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {

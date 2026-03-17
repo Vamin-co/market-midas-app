@@ -136,6 +136,19 @@ class TestSignalGeneration:
         assert result["golden_cross"].iloc[2] is True or result["golden_cross"].iloc[2] == True
         assert result["death_cross"].iloc[2] is False or result["death_cross"].iloc[2] == False
 
+    def test_first_valid_sma_bar_does_not_create_false_cross(self, analyst: AnalystAgent) -> None:
+        """The first valid SMA-200 row should not be treated as a fresh crossover."""
+        df = pd.DataFrame({
+            "Close": [100.0, 100.0, 100.0],
+            "RSI_14": [50.0, 50.0, 50.0],
+            "SMA_50": [float("nan"), 101.0, 102.0],
+            "SMA_200": [float("nan"), 100.0, 100.0],
+        })
+        result = analyst.generate_signals(df)
+
+        assert not bool(result["golden_cross"].fillna(False).any())
+        assert not bool(result["death_cross"].fillna(False).any())
+
     def test_death_cross_detected(self, analyst: AnalystAgent) -> None:
         """Death Cross: SMA_50 crosses from above to below SMA_200."""
         df = pd.DataFrame({

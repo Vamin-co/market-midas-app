@@ -13,21 +13,28 @@ Provides:
 import json
 import logging
 import os
-import time
+import re
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from queue import Empty, Queue
+from threading import Thread
 from typing import Any, Optional
 
 import yfinance as yf
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, Field
 
 # Import the core engine
 from src.main import run_daily_cycle
+from src.portfolio.store import close_trade, get_tracker_snapshot, load_trades
+from src.services.analyze import analyze_ticker
+from src.services.trade import execute_trade
+from src.utils.market import get_market_status
 from src.alert_engine import (
     alert_polling_cycle,
     evaluate_custom_alerts,
@@ -72,7 +79,15 @@ app = FastAPI(title="Market-Midas Engine", version="2.0.0", lifespan=lifespan)
 # Allow Next.js frontend to call the API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+        "tauri://localhost",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -87,6 +102,8 @@ SETTINGS_FILE = CONFIG_DIR / "settings.json"
 # { "NVDA": { "price": 192.85, "timestamp": "2026-02-27T...", "stale": false } }
 _price_cache: dict[str, dict[str, Any]] = {}
 PRICE_CACHE_TTL_SECONDS = 15 * 60  # 15 minutes
+TRADE_TICKER_PATTERN = re.compile(r"^[A-Z][A-Z0-9.-]{0,9}$")
+VALID_TRADE_MODES = {"paper", "live"}
 
 
 # ════════════════════════════════════════════════════════════════
@@ -99,9 +116,35 @@ class ExecutionRequest(BaseModel):
     wallet_balance: Optional[float] = None
 
 
+class AnalyzeRequest(BaseModel):
+    ticker: str
+    mode: str = "PAPER"
+    wallet_balance: Optional[float] = None
+
+
+class TradeRequest(BaseModel):
+    ticker: str
+    action: str
+    mode: str = "PAPER"
+    quantity: Optional[int] = None
+    dollar_amount: Optional[float] = None
+    price: Optional[float] = None
+
+
+class CloseTradeRequest(BaseModel):
+    tradeId: str
+    manualPrice: Optional[float] = Field(default=None, gt=0)
+
+
+class MarkSoldRequest(BaseModel):
+    tradeId: str
+    sellPrice: float = Field(..., gt=0)
+
+
 class UserSettings(BaseModel):
     walletBalance: Optional[float] = None
     defaultTradeSize: Optional[float] = None
+    maxPositionPercent: Optional[float] = None
     alertThreshold: Optional[float] = None
     maxDailyDrawdown: Optional[float] = None
     stopLossThreshold: Optional[float] = None
@@ -109,6 +152,7 @@ class UserSettings(BaseModel):
     provider: Optional[str] = None
     model: Optional[str] = None
     mode: Optional[str] = None
+    timezone: str = "America/New_York"
 
 
 # ════════════════════════════════════════════════════════════════
@@ -118,12 +162,14 @@ class UserSettings(BaseModel):
 DEFAULT_SETTINGS: dict[str, Any] = {
     "walletBalance": 100_000.0,
     "defaultTradeSize": 1_000.0,
+    "maxPositionPercent": 0.25,
     "alertThreshold": 5.0,
     "maxDailyDrawdown": 5.0,
     "stopLossThreshold": 5.0,
     "apiKey": "",
     "provider": "openai",
     "model": "gpt-5-mini",
+    "timezone": "America/New_York",
 }
 
 
@@ -235,6 +281,13 @@ def save_settings(new_settings: UserSettings):
             status_code=400,
             detail="Default trade size cannot exceed wallet balance.",
         )
+    if merged.get("maxPositionPercent", 0) < 0:
+        raise HTTPException(status_code=400, detail="Max position percent cannot be negative.")
+    if merged.get("maxPositionPercent", 0) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Max position percent cannot exceed 1.0.",
+        )
 
     _write_settings(merged)
 
@@ -252,6 +305,17 @@ def save_settings(new_settings: UserSettings):
 def get_providers() -> dict[str, Any]:
     """Return the full provider/model reference map for the frontend."""
     return {"providers": PROVIDER_MODEL_MAP}
+
+
+# ════════════════════════════════════════════════════════════════
+# Market Status
+# ════════════════════════════════════════════════════════════════
+
+
+@app.get("/market-status")
+def market_status_endpoint():
+    """Return current NYSE market status."""
+    return get_market_status()
 
 
 # ════════════════════════════════════════════════════════════════
@@ -303,6 +367,52 @@ def _fetch_batch_prices(tickers: list[str]) -> dict[str, float]:
     return results
 
 
+def _remember_prices(prices: dict[str, float]) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    for ticker, price in prices.items():
+        _price_cache[ticker] = {
+            "price": round(float(price), 2),
+            "timestamp": now,
+            "stale": False,
+        }
+
+
+def _resolve_exit_price(
+    ticker: str,
+    *,
+    manual_price: float | None = None,
+) -> tuple[float | None, str | None, str | None]:
+    if manual_price is not None:
+        return round(float(manual_price), 2), "manual", None
+
+    fresh = _fetch_batch_prices([ticker])
+    if ticker in fresh:
+        _remember_prices(fresh)
+        return round(float(fresh[ticker]), 2), "live", None
+
+    cached = _price_cache.get(ticker)
+    if cached and cached.get("price") is not None:
+        return round(float(cached["price"]), 2), "stale", cached.get("timestamp")
+
+    return None, None, None
+
+
+def _format_sse_event(event: str, payload: dict[str, Any]) -> str:
+    return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
+
+
+def _validate_trade_request_shape(request: TradeRequest) -> None:
+    ticker_upper = request.ticker.strip().upper()
+    mode_lower = (request.mode or "").strip().lower()
+
+    if not TRADE_TICKER_PATTERN.fullmatch(ticker_upper):
+        raise HTTPException(status_code=400, detail="Invalid ticker format")
+    if mode_lower not in VALID_TRADE_MODES:
+        raise HTTPException(status_code=400, detail="Unsupported mode")
+    if request.price is None or request.price <= 0:
+        raise HTTPException(status_code=400, detail="A positive price is required")
+
+
 @app.get("/prices")
 def get_prices(tickers: str):
     """
@@ -341,6 +451,182 @@ def get_prices(tickers: str):
             response[t] = {"price": None, "timestamp": None, "stale": True}
 
     return response
+
+
+@app.post("/analyze")
+def analyze_endpoint(request: AnalyzeRequest):
+    """Return a pure analysis result for the requested ticker."""
+    settings = _read_settings()
+    try:
+        outcome = analyze_ticker(
+            request.ticker,
+            mode=request.mode,
+            settings=settings,
+            wallet_balance=request.wallet_balance,
+        )
+        return outcome.payload
+    except Exception as exc:
+        logging.error("Analyze failed: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/analyze/stream")
+def analyze_stream_endpoint(
+    ticker: str = Query(..., min_length=1),
+    mode: str = Query("PAPER"),
+    wallet_balance: float | None = Query(None),
+):
+    """Stream analysis and debate events via SSE."""
+    settings = _read_settings()
+    queue: Queue[tuple[str, dict[str, Any]] | None] = Queue()
+
+    def emit(event: str, payload: dict[str, Any]) -> None:
+        queue.put((event, payload))
+
+    def runner() -> None:
+        try:
+            analyze_ticker(
+                ticker,
+                mode=mode,
+                settings=settings,
+                wallet_balance=wallet_balance,
+                event_sink=emit,
+            )
+        except Exception as exc:
+            logging.error("Analyze stream failed: %s", exc)
+            queue.put(("error", {"message": str(exc)}))
+        finally:
+            queue.put(None)
+
+    Thread(target=runner, daemon=True).start()
+
+    def event_generator():
+        while True:
+            try:
+                item = queue.get(timeout=15)
+            except Empty:
+                yield ": keep-alive\n\n"
+                continue
+
+            if item is None:
+                break
+
+            event, payload = item
+            yield _format_sse_event(event, payload)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.post("/trade")
+def trade_endpoint(request: TradeRequest):
+    """Execute a trade explicitly requested by the user."""
+    _validate_trade_request_shape(request)
+    try:
+        settings = _read_settings()
+        result = execute_trade(
+            ticker=request.ticker,
+            action=request.action,
+            mode=request.mode,
+            quantity=request.quantity,
+            dollar_amount=request.dollar_amount,
+            price=request.price,
+            settings=settings,
+        )
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logging.error("Trade execution failed: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/portfolio")
+def portfolio_endpoint(
+    mode: str = Query("paper"),
+    closed_page: int = Query(1, ge=1),
+    closed_per_page: int = Query(10, ge=1, le=100),
+):
+    """Return the tracker snapshot from the single backend portfolio store."""
+    settings = _read_settings()
+    starting_balance = float(settings.get("walletBalance", 100_000.0))
+    return get_tracker_snapshot(
+        starting_balance=starting_balance,
+        mode=mode,
+        closed_page=closed_page,
+        closed_per_page=closed_per_page,
+    )
+
+
+@app.post("/portfolio/close")
+def close_trade_endpoint(request: CloseTradeRequest):
+    """Close one open trade using live, stale, or manual pricing."""
+    try:
+        trades = load_trades()
+        trade = next((item for item in trades if item.get("id") == request.tradeId), None)
+        if trade is None:
+            raise HTTPException(status_code=404, detail="Trade not found")
+
+        price, price_source, stale_timestamp = _resolve_exit_price(
+            str(trade.get("ticker") or "").upper(),
+            manual_price=request.manualPrice,
+        )
+
+        if price is None:
+            return JSONResponse(
+                {
+                    "error": "PRICE_UNAVAILABLE",
+                    "message": "All automated price sources unavailable. Please provide a manual price.",
+                    "tradeId": request.tradeId,
+                    "ticker": trade.get("ticker"),
+                },
+                status_code=503,
+            )
+
+        closed = close_trade(request.tradeId, exit_price=price, manual_override=False)
+        return {
+            "success": True,
+            "pnl": closed["pnl"],
+            "exitPrice": closed["exitPrice"],
+            "exitDollarAmount": closed["exitDollarAmount"],
+            "priceSource": price_source,
+            "staleTimestamp": stale_timestamp,
+            "tradeId": request.tradeId,
+        }
+    except ValueError as exc:
+        detail = str(exc)
+        status_code = 404 if detail == "Trade not found" else 409
+        raise HTTPException(status_code=status_code, detail=detail)
+
+
+@app.post("/portfolio/mark-sold")
+def mark_sold_endpoint(request: MarkSoldRequest):
+    """Close one open trade with a manual override price."""
+    try:
+        closed = close_trade(
+            request.tradeId,
+            exit_price=request.sellPrice,
+            manual_override=True,
+        )
+        return {
+            "success": True,
+            "pnl": closed["pnl"],
+            "exitPrice": closed["exitPrice"],
+            "exitDollarAmount": closed["exitDollarAmount"],
+            "priceSource": "manual",
+            "tradeId": request.tradeId,
+        }
+    except ValueError as exc:
+        detail = str(exc)
+        status_code = 404 if detail == "Trade not found" else 409
+        raise HTTPException(status_code=status_code, detail=detail)
 
 
 # ════════════════════════════════════════════════════════════════
@@ -438,6 +724,7 @@ def execute_cycle(request: ExecutionRequest):
         )
         frontend_data = run_daily_cycle(
             ticker,
+            mode=request.mode,
             wallet_balance=wallet_balance,
             max_daily_drawdown_pct=max_daily_drawdown_pct,
             starting_balance=starting_balance,
@@ -484,4 +771,4 @@ if os.getenv("MARKET_MIDAS_ENV") == "development":
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000)

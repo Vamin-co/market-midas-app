@@ -12,7 +12,6 @@ Browser: Chromium via Playwright (headed mode for human visibility).
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from datetime import datetime, timezone
@@ -21,15 +20,14 @@ from typing import Any
 
 from playwright.sync_api import Browser, BrowserContext, Page, sync_playwright
 
+from src.portfolio.store import append_trade, close_ticker_position, get_position, normalize_mode
+
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 SCREENSHOTS_DIR = PROJECT_ROOT / "logs" / "screenshots"
 PAPER_TRADES_LOG = PROJECT_ROOT / "logs" / "paper_trades.json"
 ROBINHOOD_BASE = "https://robinhood.com"
-
-# ─── Paper Trading Mode ─────────────────────────────────────────────
-PAPER_TRADING = True  # ← PAPER MODE ACTIVE
 
 # ─── Safety constants ───────────────────────────────────────────────
 # These selectors are NEVER to be clicked by automation.
@@ -56,16 +54,20 @@ class TraderAgent:
     This agent NEVER executes a trade without explicit human confirmation.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, mode: str = "paper") -> None:
         self._playwright = None
         self._browser: Browser | None = None
         self._context: BrowserContext | None = None
         self._page: Page | None = None
         self.is_authenticated = False
+        self.mode = normalize_mode(mode)
         SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
         PAPER_TRADES_LOG.parent.mkdir(parents=True, exist_ok=True)
-        mode = "📝 PAPER" if PAPER_TRADING else "🔴 LIVE"
-        logger.info("TraderAgent initialized (%s mode, human-in-the-loop enforced).", mode)
+        mode_label = "📝 PAPER" if self.mode == "paper" else "🔴 LIVE"
+        logger.info(
+            "TraderAgent initialized (%s mode, human-in-the-loop enforced).",
+            mode_label,
+        )
 
     # ─── Browser Lifecycle ───────────────────────────────────────────
 
@@ -186,7 +188,7 @@ class TraderAgent:
         ⚠️  SAFETY: This method NEVER clicks Submit / Review Order / Place Order.
         It only fills the form fields and captures a screenshot.
 
-        In PAPER_TRADING mode, skips the browser entirely and logs
+        In paper mode, skips the browser entirely and logs
         the trade to logs/paper_trades.json.
 
         Args:
@@ -205,7 +207,7 @@ class TraderAgent:
                 - message: str
         """
         # ─── PAPER TRADING MODE ──────────────────────────────────────
-        if PAPER_TRADING:
+        if self.mode == "paper":
             return self._paper_trade(action, ticker, quantity, dollar_amount, price)
         if not self._page or self._page.is_closed():
             return {
@@ -426,25 +428,40 @@ class TraderAgent:
         ts = datetime.now(timezone.utc)
         cost = round(quantity * price, 2) if quantity and price else dollar_amount or 0.0
 
-        record = {
-            "timestamp": ts.isoformat(),
-            "action": action.upper(),
-            "ticker": ticker.upper(),
-            "quantity": quantity,
-            "price": price,
-            "dollar_amount": cost,
-            "mode": "paper",
-        }
-
-        # Append to JSON log
-        trades: list[dict] = []
-        if PAPER_TRADES_LOG.exists():
-            try:
-                trades = json.loads(PAPER_TRADES_LOG.read_text())
-            except (json.JSONDecodeError, ValueError):
-                trades = []
-        trades.append(record)
-        PAPER_TRADES_LOG.write_text(json.dumps(trades, indent=2))
+        if action.upper() == "BUY":
+            record = append_trade(
+                action="BUY",
+                ticker=ticker.upper(),
+                quantity=quantity or 0,
+                price=price or 0.0,
+                mode=self.mode,
+                status="open",
+                timestamp=ts.isoformat(),
+            )
+        else:
+            position = get_position(ticker.upper(), self.mode)
+            if position is None:
+                return {
+                    "status": "error",
+                    "requires_approval": False,
+                    "order_details": {},
+                    "screenshot_path": None,
+                    "message": f"No open position for {ticker.upper()}",
+                }
+            close_ticker_position(
+                ticker.upper(),
+                exit_price=price or 0.0,
+                mode=self.mode,
+            )
+            record = {
+                "timestamp": ts.isoformat(),
+                "action": "SELL",
+                "ticker": ticker.upper(),
+                "quantity": position["shares"],
+                "price": round(price or 0.0, 2),
+                "dollar_amount": cost,
+                "mode": self.mode,
+            }
 
         # Bold terminal alert
         print("\n" + "=" * 60)

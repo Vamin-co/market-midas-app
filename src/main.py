@@ -28,13 +28,9 @@ import yfinance as yf
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.agents.analyst import AnalystAgent
-from src.agents.trader import TraderAgent, PAPER_TRADING
-from src.risk.manager import RiskManager
-from src.agents.researcher import ResearcherAgent
-from src.strategy.engine import StrategyEngine
-from src.strategy.debate import run_debate
-from src.utils.market import get_market_status
+from src.portfolio.store import get_position, get_tracker_snapshot, normalize_mode
+from src.services.analyze import analyze_ticker
+from src.services.trade import execute_trade
 
 logging.basicConfig(
     level=logging.INFO,
@@ -48,6 +44,22 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
+SETTINGS_FILE = PROJECT_ROOT / "config" / "settings.json"
+
+
+def _read_settings_local() -> dict[str, Any]:
+    defaults = {
+        "walletBalance": 100_000.0,
+        "maxDailyDrawdown": 5.0,
+        "mode": "paper",
+    }
+    if SETTINGS_FILE.exists():
+        try:
+            payload = json.loads(SETTINGS_FILE.read_text())
+            return {**defaults, **payload}
+        except (json.JSONDecodeError, ValueError):
+            return defaults
+    return defaults
 
 
 def _fetch_quant_data(ticker: str, current_price: float) -> dict[str, Any]:
@@ -116,13 +128,6 @@ def _fetch_quant_data(ticker: str, current_price: float) -> dict[str, Any]:
     return quant
 
 
-# Simulated portfolio state
-PORTFOLIO: dict[str, Any] = {
-    "cash": 10_000.0,
-    "positions": {},
-}
-
-
 def _generate_daily_report(
     ticker: str,
     latest: pd.Series,
@@ -132,6 +137,8 @@ def _generate_daily_report(
     debate_obj: Any | None = None,
     sentiment_context: dict[str, Any] | None = None,
     position_shares: int = 0,
+    mode: str = "paper",
+    cash_value: float = 0.0,
 ) -> str:
     """Generate a Morning Briefing dashboard — designed for < 30 second decisions.
 
@@ -142,7 +149,7 @@ def _generate_daily_report(
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     filepath = ARTIFACTS_DIR / f"daily_report_{date_str}.md"
 
-    mode_label = "📝 PAPER" if PAPER_TRADING else "🔴 LIVE"
+    mode_label = "📝 PAPER" if normalize_mode(mode) == "paper" else "🔴 LIVE"
     close = latest["Close"]
     rsi = latest.get("RSI_14", float("nan"))
     sma_50 = latest.get("SMA_50", float("nan"))
@@ -389,7 +396,7 @@ def _generate_daily_report(
     else:
         header = f"""# 🏛️ Market-Midas — Morning Briefing
 
-> **{date_str}** | Mode: {mode_label} | Cash: ${PORTFOLIO['cash']:,.2f}
+> **{date_str}** | Mode: {mode_label} | Cash: ${cash_value:,.2f}
 """
         filepath.write_text(header + entry)
 
@@ -399,400 +406,100 @@ def _generate_daily_report(
 
 def run_daily_cycle(
     ticker: str,
+    mode: str = "paper",
     wallet_balance: float | None = None,
     max_daily_drawdown_pct: float = 0.05,
     starting_balance: float | None = None,
 ) -> dict[str, Any]:
-    """Execute one daily analysis + trade cycle for a ticker.
+    """Compatibility wrapper for the legacy combined analysis + execution flow."""
+    settings = _read_settings_local()
+    normalized_mode = normalize_mode(mode or settings.get("mode"))
+    if starting_balance is not None:
+        settings["walletBalance"] = starting_balance
+    settings["maxDailyDrawdown"] = max_daily_drawdown_pct * 100
 
-    Args:
-        ticker: Stock ticker symbol.
-        wallet_balance: User's current wallet balance from frontend settings.
-            Falls back to PORTFOLIO['cash'] if None (CLI backward compat).
-        max_daily_drawdown_pct: Maximum allowed daily loss as a decimal (0.05 = 5%).
-        starting_balance: Balance at start of trading day. If None, equals wallet_balance.
-
-    Steps:
-      1. Analyst: Fetch & compute indicators.
-      2. StrategyEngine: Score confidence, classify zone.
-      3. Debate: If MARGINAL (50-70%), run Bull vs Bear debate.
-      4. Trade: If actionable, stage or paper-trade the order.
-      5. Report: Save to artifacts/.
-    """
-    analyst = AnalystAgent()
-    trader = TraderAgent()
-    risk_mgr = RiskManager()
-    engine = StrategyEngine()
-    researcher = ResearcherAgent()
-
-    mode_label = "📝 PAPER" if PAPER_TRADING else "🔴 LIVE"
-
+    mode_label = "📝 PAPER" if normalized_mode == "paper" else "🔴 LIVE"
     print(f"\n{'='*60}")
     print(f"  🔁 DAILY CYCLE: {ticker} ({mode_label} MODE)")
     print(f"{'='*60}")
 
-    # ── Step 1: Analyst ──
-    logger.info("Step 1: Running Analyst for %s...", ticker)
-    analysis = analyst.analyze(ticker)
+    outcome = analyze_ticker(
+        ticker,
+        mode=normalized_mode,
+        settings=settings,
+        wallet_balance=wallet_balance,
+    )
+    payload = dict(outcome.payload)
 
-    if "error" in analysis:
-        print(f"\n  ❌ Analysis failed: {analysis['error']}")
-        return {"ticker": ticker, "signal": "ERROR", "action": "none", "result": None}
+    if payload.get("state") == "market_closed":
+        print(f"\n  🔒 {payload.get('message', 'Markets are closed.')}")
+        return payload
 
-    df = analysis["dataframe"]
-    data_meta = analysis.get("data_meta", {})
+    action = payload.get("status", {}).get("action", "HOLD")
+    price = float(payload.get("technicals", {}).get("price") or 0.0)
 
-    # Check for empty data — return structured market_closed response
-    if df.empty:
-        reason = "no_cached_data"
-        cache_age = None
-        if data_meta.get("cache_too_stale"):
-            reason = "cache_too_stale"
-            cache_age = data_meta.get("cache_age_days")
-        elif data_meta.get("no_cached_data"):
-            reason = "no_cached_data"
-
-        market_closed_response = {
-            "state": "market_closed",
-            "ticker": ticker,
-            "market_status": get_market_status(),
-            "reason": reason,
-            "cache_age_days": cache_age,
-            "message": f"Markets are closed and no recent data is available for {ticker}.",
-        }
-        print(f"\n  🔒 {market_closed_response['message']}")
-        return market_closed_response
-
-    latest = df.iloc[-1]
-    current_price = latest["Close"]
-    rsi = latest.get("RSI_14", float("nan"))
-    sma_50 = latest.get("SMA_50", float("nan"))
-
-    # ── Step 2: Strategy Engine ──
-    logger.info("Step 2: Running StrategyEngine for %s...", ticker)
-    engine_signal = engine.generate_signal(ticker, df)
-    signal = engine_signal["action"]
-    confidence = engine_signal["confidence_pct"]
-    zone = engine_signal["zone"]
-
-    print(f"\n  📊 ANALYST + STRATEGY REPORT")
+    print(f"\n  📊 ANALYSIS")
     print(f"  {'─'*56}")
-    print(f"  Ticker      : {ticker}")
-    print(f"  Price       : ${current_price:.2f}")
-    print(f"  RSI(14)     : {rsi:.1f}")
-    print(f"  SMA(50)     : ${sma_50:.2f}")
-    print(f"  Confidence  : \033[1m{confidence:.0f}%\033[0m ({zone})")
-    print(f"  Signal      : \033[1m{signal}\033[0m")
+    print(f"  Ticker      : {payload.get('ticker', ticker).upper()}")
+    print(f"  Price       : ${price:.2f}")
+    print(f"  Confidence  : {payload.get('confidence', 0):.0f}% ({payload.get('zone', 'UNKNOWN')})")
+    print(f"  Recommendation: {action}")
 
-    # ── Step 2.5: Fetch news sentiment (for debate context) ──
-    sentiment_context = None
-    logger.info("Step 2.5: Fetching news sentiment for %s...", ticker)
-    try:
-        sentiment_summary = researcher.summarize_sentiment(ticker)
-        sentiment_context = {
-            "bullish_headlines": sentiment_summary.bullish_headlines,
-            "bearish_headlines": sentiment_summary.bearish_headlines,
-            "neutral_headlines": sentiment_summary.neutral_headlines,
-            "composite_score": sentiment_summary.composite_score,
-            "total_headlines": sentiment_summary.total_headlines,
-        }
-        n_bull = len(sentiment_summary.bullish_headlines)
-        n_bear = len(sentiment_summary.bearish_headlines)
-        print(f"\n  📰 NEWS SENTIMENT")
-        print(f"  {'─'*56}")
-        print(f"  Headlines   : {sentiment_summary.total_headlines} total")
-        print(f"  Bullish     : {n_bull}")
-        print(f"  Bearish     : {n_bear}")
-        print(f"  Score       : \033[1m{sentiment_summary.composite_score:+.2f}\033[0m")
-    except Exception as e:
-        logger.warning("News fetch failed (%s), proceeding without sentiment.", e)
-
-    # ── Step 3: Debate Mode (Always generate for UI, but only override if MARGINAL) ──
-    print(f"\n  🏛️  Generating Adversarial Synthesis...")
-    print(f"  {'─'*56}")
-    debate_obj = run_debate(ticker, df, engine_signal, sentiment_context)
-
-    print(f"\n  🐂 Bull Avg Conviction : {debate_obj.bull_score:.0f}/100")
-    print(f"  🐻 Bear Avg Conviction : {debate_obj.bear_score:.0f}/100")
-    print(f"  Winner                 : {debate_obj.winner}")
-    print(f"  Recommendation         : \033[1m{debate_obj.recommendation}\033[0m")
-
-    # Debate only overrides automated execution if confidence was MARGINAL
-    if zone == "MARGINAL":
-        if debate_obj.recommendation == "SKIP":
-            signal = "HOLD"
-            engine_signal["action"] = "HOLD"
-            print(f"\n  🐻 Bear wins — overriding to \033[1mHOLD\033[0m")
-        elif debate_obj.recommendation == "REDUCE_SIZE":
-            print(f"\n  ⚖️  Draw — reducing position size by 50%")
-        # PROCEED keeps the original signal
-
-    current_position = PORTFOLIO["positions"].get(ticker)
-    cash = wallet_balance if wallet_balance is not None else PORTFOLIO["cash"]
-    action = "hold"
     trade_result = None
-    position_shares = 0
+    if action in {"BUY", "SELL"} and price > 0:
+        quantity = int(payload.get("risk", {}).get("recommended_shares") or 0)
+        if action == "SELL":
+            current_position = outcome.current_position or get_position(ticker, normalized_mode)
+            if current_position:
+                quantity = int(current_position["shares"])
 
-    # ── Circuit Breaker Check ──
-    cb_starting = starting_balance if starting_balance is not None else cash
-    cb_result = risk_mgr.check_circuit_breaker(
-        current_balance=cash,
-        starting_balance=cb_starting,
-        max_drawdown_pct=max_daily_drawdown_pct,
-    )
-
-    if cb_result["tripped"]:
-        print(f"\n  ⛔ CIRCUIT BREAKER TRIPPED — ALL TRADING HALTED")
-        print(f"     {cb_result['reason']}")
-        # Short-circuit: return kill-switch response with full analysis data
-        # but action forced to HALT — no trade will be executed
-        risk_position = risk_mgr.calculate_position_size(cash, current_price)
-        risk_stop_loss = risk_mgr.calculate_stop_loss(current_price)
-        return {
-            "ticker": ticker,
-            "confidence": confidence,
-            "zone": zone,
-            "technicals": {
-                "rsi": rsi if pd.notna(rsi) else None,
-                "sma_50": sma_50 if pd.notna(sma_50) else None,
-                "price": current_price,
-            },
-            "sentiment": {
-                "score": sentiment_context.get("composite_score", 0.0) if sentiment_context else 0.0,
-                "sources": sentiment_sources,
-            },
-            "debate": {
-                "bull_argument": "",
-                "bear_argument": "",
-                "bull_score": 0.0,
-                "bear_score": 0.0,
-                "winner": "NONE",
-            },
-            "risk": {
-                "recommended_dollars": 0,
-                "recommended_shares": 0,
-                "position_pct": 0,
-                "max_position_pct": risk_mgr.MAX_POSITION_PCT,
-                "wallet_balance": cash,
-                "stop_loss": risk_stop_loss,
-            },
-            "circuit_breaker": {
-                "tripped": True,
-                "drawdown_pct": cb_result["drawdown_pct"],
-                "drawdown_dollars": cb_result["drawdown_dollars"],
-                "max_drawdown_pct": cb_result["max_drawdown_pct"],
-                "reason": cb_result["reason"],
-            },
-            "status": {
-                "awaiting_human_approval": False,
-                "action": "CIRCUIT_BREAKER_HALT",
-            },
-        }
-
-    # ── Step 4: Trade execution ──
-    if signal == "BUY" and current_position is None:
-        portfolio_value = cash
-        position = risk_mgr.calculate_position_size(portfolio_value, current_price)
-        shares = position["max_shares"]
-
-        # Debate may reduce size
-        if debate_obj and zone == "MARGINAL":
-            if debate_obj.recommendation == "REDUCE_SIZE":
-                shares = max(1, shares // 2)
-
-        if shares > 0 and (shares * current_price) <= cash:
-            cost = round(shares * current_price, 2)
-            action = "BUY"
-            position_shares = shares
-
-            print(f"\n  💰 POSITION SIZING")
-            print(f"  {'─'*56}")
-            print(f"  Cash Available : ${cash:,.2f}")
-            print(f"  Shares to Buy  : {shares}")
-            print(f"  Total Cost     : ${cost:,.2f}")
-
-            if not PAPER_TRADING:
-                print("\n  🌐 Launching browser for live trade...")
-                nav_result = trader.login_and_navigate(ticker)
-                if not nav_result["authenticated"]:
-                    print("  ❌ Authentication failed.")
-                    return {"ticker": ticker, "signal": signal, "action": "error", "result": None}
-
-            trade_result = trader.stage_order(
-                action="BUY", ticker=ticker,
-                quantity=shares, price=current_price,
+        if quantity > 0:
+            trade_result = execute_trade(
+                ticker=ticker,
+                action=action,
+                mode=normalized_mode,
+                quantity=quantity,
+                price=price,
             )
+            payload["trade_result"] = trade_result
 
-            if trade_result["status"] == "paper_traded":
-                PORTFOLIO["cash"] -= cost
-                PORTFOLIO["positions"][ticker] = {
-                    "shares": shares,
-                    "entry_price": current_price,
-                }
-        else:
-            print(f"\n  ⚠️ Insufficient cash for {ticker}")
-            action = "skip"
-
-    elif signal == "SELL" and current_position is not None:
-        shares = current_position["shares"]
-        entry = current_position["entry_price"]
-        pnl = round((current_price - entry) * shares, 2)
-        action = "SELL"
-        position_shares = shares
-
-        print(f"\n  📤 SELLING POSITION")
-        print(f"  {'─'*56}")
-        print(f"  Shares Held : {shares}")
-        print(f"  Entry Price : ${entry:.2f}")
-        print(f"  Exit Price  : ${current_price:.2f}")
-        print(f"  P&L         : ${pnl:+,.2f}")
-
-        if not PAPER_TRADING:
-            print("\n  🌐 Launching browser for live trade...")
-            nav_result = trader.login_and_navigate(ticker)
-            if not nav_result["authenticated"]:
-                print("  ❌ Authentication failed.")
-                return {"ticker": ticker, "signal": signal, "action": "error", "result": None}
-
-        trade_result = trader.stage_order(
-            action="SELL", ticker=ticker,
-            quantity=shares, price=current_price,
-        )
-
-        if trade_result and trade_result["status"] == "paper_traded":
-            PORTFOLIO["cash"] += shares * current_price
-            del PORTFOLIO["positions"][ticker]
-
-    else:
-        reason = ("already holding" if current_position and signal == "BUY"
-                  else "no position" if signal == "SELL"
-                  else "HOLD signal")
-        print(f"\n  ⏸️  NO ACTION — {reason}")
-
-    report_path = _generate_daily_report(
-        ticker, latest, engine_signal, action, trade_result,
-        debate_obj=debate_obj,
-        sentiment_context=sentiment_context,
-        position_shares=position_shares,
-    )
-    print(f"\n  📄 Morning Briefing: {report_path}")
-
-    # Helper to serialize complex objects
-    def _safe_serialize(obj: Any) -> Any:
-        if hasattr(obj, "__dict__"): return obj.__dict__
-        return str(obj)
-
-    # Build sentiment sources correctly for the UI
-    sentiment_sources = []
-    if sentiment_context:
-        for h in sentiment_context.get("bullish_headlines", []) + sentiment_context.get("bearish_headlines", []):
-            sentiment_sources.append({
-                "title": getattr(h, "title", str(h)),
-                "url": getattr(h, "url", ""),
-                "source": getattr(h, "source", "News")
-            })
-
-    # ── Export JSON for Next.js Frontend (Contract-First Strict Schema) ──
-    bull_arg_text = ""
-    bear_arg_text = ""
-    if debate_obj:
-        if debate_obj.bull_best_arg:
-            bull_arg_text = f"{debate_obj.bull_best_arg.claim} Evidence: {debate_obj.bull_best_arg.evidence}"
-        if debate_obj.bear_best_arg:
-            bear_arg_text = f"{debate_obj.bear_best_arg.claim} Evidence: {debate_obj.bear_best_arg.evidence}"
-
-    # Compute risk recommendation for frontend
-    risk_position = risk_mgr.calculate_position_size(cash, current_price)
-    risk_stop_loss = risk_mgr.calculate_stop_loss(current_price)
-
-    # Fetch supplementary quant data for the frontend
-    quant_data = _fetch_quant_data(ticker, current_price)
-
-    # Enhanced technicals — include fields already computed by the analyst
-    sma_200_val = latest.get("SMA_200", float("nan"))
-    golden_cross_val = bool(latest.get("golden_cross", False))
-    death_cross_val = bool(latest.get("death_cross", False))
-    sentiment_score_val = (
-        sentiment_context.get("composite_score", 0.0)
-        if sentiment_context else 0.0
-    )
-
-    # Extract company_name from quant data (always present, falls back to ticker)
-    company_name = quant_data.pop("company_name", ticker)
-
-    frontend_data = {
-        "ticker": ticker,
-        "company_name": company_name,
-        "confidence": confidence,
-        "zone": zone,
-        "technicals": {
-            "rsi": rsi if pd.notna(rsi) else None,
-            "sma_50": sma_50 if pd.notna(sma_50) else None,
-            "sma_200": sma_200_val if pd.notna(sma_200_val) else None,
-            "price": current_price,
-            "golden_cross": golden_cross_val,
-            "death_cross": death_cross_val,
-            "sentiment_score": sentiment_score_val,
-        },
-        "quant": quant_data,
-        "sentiment": {
-            "score": sentiment_context.get("composite_score", 0.0) if sentiment_context else 0.0,
-            "sources": sentiment_sources
-        },
-        "debate": {
-            "bull_argument": bull_arg_text,
-            "bear_argument": bear_arg_text,
-            "bull_score": debate_obj.bull_score if debate_obj else 0.0,
-            "bear_score": debate_obj.bear_score if debate_obj else 0.0,
-            "winner": debate_obj.winner if debate_obj else "NONE"
-        },
-        "risk": {
-            "recommended_dollars": risk_position["max_dollars"],
-            "recommended_shares": risk_position["max_shares"],
-            "position_pct": risk_position["position_pct"],
-            "max_position_pct": risk_mgr.MAX_POSITION_PCT,
-            "wallet_balance": cash,
-            "stop_loss": risk_stop_loss,
-        },
-        "status": {
-            "awaiting_human_approval": True if zone == "MARGINAL" else False,
-            "action": action
-        },
-        "market_status": get_market_status(),
-    }
-
-    # Surface cache metadata if analysis used cached data
-    if data_meta.get("using_cached_data"):
-        frontend_data["using_cached_data"] = True
-        frontend_data["cache_age_days"] = data_meta.get("cache_age_days", 0)
-    
-    json_path = ARTIFACTS_DIR / "latest_run.json"
-    with open(json_path, "w") as f:
-        json.dump(frontend_data, f, indent=2)
-    print(f"  💾 JSON Export: {json_path}")
-
-    return frontend_data
+    return payload
 
 
 def main() -> None:
     tickers = sys.argv[1:] if len(sys.argv) > 1 else ["NVDA"]
-
-    mode_label = "📝 PAPER" if PAPER_TRADING else "🔴 LIVE"
+    settings = _read_settings_local()
+    mode = normalize_mode(settings.get("mode"))
+    mode_label = "📝 PAPER" if mode == "paper" else "🔴 LIVE"
+    snapshot = get_tracker_snapshot(
+        starting_balance=float(settings.get("walletBalance", 100_000.0)),
+        mode=mode,
+    )
     print(f"\n{'='*60}")
     print(f"  🏛️  MARKET-MIDAS — {mode_label} TRADING")
     print(f"  Tickers: {', '.join(tickers)}")
-    print(f"  Cash: ${PORTFOLIO['cash']:,.2f}")
+    print(f"  Cash: ${snapshot['walletBalance']:,.2f}")
     print(f"{'='*60}")
 
     for ticker in tickers:
-        run_daily_cycle(ticker)
+        run_daily_cycle(
+            ticker,
+            mode=mode,
+            wallet_balance=snapshot["walletBalance"],
+            starting_balance=float(settings.get("walletBalance", 100_000.0)),
+            max_daily_drawdown_pct=float(settings.get("maxDailyDrawdown", 5.0)) / 100.0,
+        )
 
     print(f"\n{'='*60}")
     print(f"  📊 PORTFOLIO SUMMARY")
     print(f"  {'─'*56}")
-    print(f"  Cash        : ${PORTFOLIO['cash']:,.2f}")
-    for t, pos in PORTFOLIO["positions"].items():
-        print(f"  Position    : {pos['shares']} x {t} @ ${pos['entry_price']:.2f}")
+    snapshot = get_tracker_snapshot(
+        starting_balance=float(settings.get("walletBalance", 100_000.0)),
+        mode=mode,
+    )
+    print(f"  Cash        : ${snapshot['walletBalance']:,.2f}")
+    for trade in snapshot["openPositions"]:
+        print(f"  Position    : {trade['quantity']} x {trade['ticker']} @ ${trade['price']:.2f}")
     print(f"{'='*60}\n")
 
 
