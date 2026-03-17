@@ -28,6 +28,16 @@ logger = logging.getLogger(__name__)
 EventSink = Callable[[str, dict[str, Any]], None]
 
 
+def sanitize_headline(text: str) -> str:
+    """Normalize external headline text before adding it to debate context."""
+    if not text:
+        return ""
+
+    text = "".join(ch for ch in text if ch.isprintable())
+    text = text[:200]
+    return f'[HEADLINE]: "{text}"'
+
+
 @dataclass
 class Argument:
     """A single argument from a sub-agent."""
@@ -180,7 +190,8 @@ class BullAgent:
                 # Use up to 3 top bullish headlines as evidence
                 top_headlines = bullish_headlines[:3]
                 headline_text = " | ".join(
-                    h.title if hasattr(h, 'title') else str(h) for h in top_headlines
+                    sanitize_headline(h.title if hasattr(h, 'title') else str(h))
+                    for h in top_headlines
                 )
                 claim_parts = []
                 if rsi < 50:
@@ -341,7 +352,8 @@ class BearAgent:
             if bearish_headlines:
                 top_headlines = bearish_headlines[:3]
                 headline_text = " | ".join(
-                    h.title if hasattr(h, 'title') else str(h) for h in top_headlines
+                    sanitize_headline(h.title if hasattr(h, 'title') else str(h))
+                    for h in top_headlines
                 )
                 claim_parts = []
                 if rsi > 50:

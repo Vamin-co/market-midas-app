@@ -14,8 +14,11 @@ def test_post_analyze_returns_pure_payload(monkeypatch):
     )
 
     with TestClient(server_module.app) as client:
-        response = client.post("/analyze", json={"ticker": "nvda", "mode": "PAPER"})
+        invalid_response = client.post("/analyze", json={"ticker": "nvda", "mode": "PAPER"})
+        response = client.post("/analyze", json={"ticker": "NVDA", "mode": "PAPER"})
 
+    assert invalid_response.status_code == 422
+    assert invalid_response.json() == {"detail": "Invalid ticker symbol"}
     assert response.status_code == 200
     assert response.json()["ticker"] == "NVDA"
     assert response.json()["status"]["action"] == "BUY"

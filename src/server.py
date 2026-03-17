@@ -102,6 +102,7 @@ SETTINGS_FILE = CONFIG_DIR / "settings.json"
 _price_cache: dict[str, dict[str, Any]] = {}
 PRICE_CACHE_TTL_SECONDS = 15 * 60  # 15 minutes
 TRADE_TICKER_PATTERN = re.compile(r"^[A-Z][A-Z0-9.-]{0,9}$")
+ANALYZE_TICKER_PATTERN = re.compile(r"^[A-Z]{1,5}$")
 VALID_TRADE_MODES = {"paper", "live"}
 SSE_STREAM_TIMEOUT_SECONDS = 120.0
 SSE_MAX_CONNECTIONS_PER_IP = 3
@@ -430,6 +431,12 @@ def _validate_trade_request_shape(request: TradeRequest) -> None:
         raise HTTPException(status_code=400, detail="A positive price is required")
 
 
+def _validate_analyze_ticker(ticker: str) -> str:
+    if not ANALYZE_TICKER_PATTERN.fullmatch(ticker or ""):
+        raise HTTPException(status_code=422, detail="Invalid ticker symbol")
+    return ticker
+
+
 @app.get("/prices")
 def get_prices(tickers: str):
     """
@@ -473,6 +480,7 @@ def get_prices(tickers: str):
 @app.post("/analyze")
 def analyze_endpoint(request: AnalyzeRequest):
     """Return a pure analysis result for the requested ticker."""
+    _validate_analyze_ticker(request.ticker)
     settings = _read_settings()
     try:
         outcome = analyze_ticker(
@@ -495,6 +503,7 @@ def analyze_stream_endpoint(
     wallet_balance: float | None = Query(None),
 ):
     """Stream analysis and debate events via SSE."""
+    _validate_analyze_ticker(ticker)
     settings = _read_settings()
     client_ip = request.client.host if request.client else "unknown"
     _reserve_sse_slot(client_ip)
@@ -607,14 +616,18 @@ def portfolio_endpoint(
     closed_per_page: int = Query(10, ge=1, le=100),
 ):
     """Return the tracker snapshot from the single backend portfolio store."""
-    settings = _read_settings()
-    starting_balance = float(settings.get("walletBalance", 100_000.0))
-    return get_tracker_snapshot(
-        starting_balance=starting_balance,
-        mode=mode,
-        closed_page=closed_page,
-        closed_per_page=closed_per_page,
-    )
+    try:
+        settings = _read_settings()
+        starting_balance = float(settings.get("walletBalance", 100_000.0))
+        return get_tracker_snapshot(
+            starting_balance=starting_balance,
+            mode=mode,
+            closed_page=closed_page,
+            closed_per_page=closed_per_page,
+        )
+    except RuntimeError as exc:
+        logging.error("Portfolio load failed: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.post("/portfolio/close")

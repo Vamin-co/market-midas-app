@@ -71,6 +71,24 @@ def _atomic_write(path: Path, payload: list[TradeRecord]) -> None:
     os.replace(tmp_path, path)
 
 
+def _quarantine_corrupt_ledger() -> Path:
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    quarantine_path = TRADES_FILE.with_name(f"{TRADES_FILE.name}.corrupt.{timestamp}")
+
+    try:
+        os.replace(TRADES_FILE, quarantine_path)
+    except FileNotFoundError:
+        logger.error("Trade ledger missing while attempting quarantine: %s", TRADES_FILE)
+    except OSError as exc:
+        logger.error("Failed to quarantine corrupt trade ledger %s: %s", TRADES_FILE, exc)
+        raise RuntimeError(
+            "Portfolio ledger is corrupt and could not be quarantined. Manual recovery required."
+        ) from exc
+
+    logger.error("Corrupt portfolio ledger quarantined to %s", quarantine_path)
+    return quarantine_path
+
+
 def _migrate_trade(raw_trade: dict[str, Any]) -> tuple[TradeRecord, bool]:
     trade: TradeRecord = dict(raw_trade)
     changed = False
@@ -128,12 +146,18 @@ def load_trades(mode: str | None = None) -> list[TradeRecord]:
     try:
         payload = json.loads(TRADES_FILE.read_text())
     except (json.JSONDecodeError, OSError, ValueError) as exc:
-        logger.warning("Trade ledger unreadable (%s), returning [].", exc)
-        return []
+        quarantine_path = _quarantine_corrupt_ledger()
+        raise RuntimeError(
+            "Portfolio ledger is corrupt. "
+            f"Quarantined to {quarantine_path}. Manual recovery required."
+        ) from exc
 
     if not isinstance(payload, list):
-        logger.warning("Trade ledger root is not a list, returning [].")
-        return []
+        quarantine_path = _quarantine_corrupt_ledger()
+        raise RuntimeError(
+            "Portfolio ledger is corrupt. "
+            f"Quarantined to {quarantine_path}. Manual recovery required."
+        )
 
     migrated: list[TradeRecord] = []
     changed = False

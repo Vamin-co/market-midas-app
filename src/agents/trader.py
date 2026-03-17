@@ -141,15 +141,12 @@ class TraderAgent:
         page.wait_for_timeout(2000)
 
         # Step 2: PAUSE — wait for human to log in
-        print("\n" + "=" * 60)
-        print("  🔐 HUMAN ACTION REQUIRED")
-        print("  " + "-" * 56)
-        print("  Please log in to Robinhood in the browser window.")
-        print("  Complete 2FA if prompted.")
-        print("  ")
-        print("  Press ENTER here when you are fully logged in...")
-        print("=" * 60)
-        input()  # Block until human confirms login
+        logger.info("%s", "=" * 60)
+        logger.info("  🔐 HUMAN ACTION REQUIRED")
+        logger.info("  %s", "-" * 56)
+        logger.info("  Please log in to Robinhood in the browser window.")
+        logger.info("  Complete 2FA if prompted.")
+        input("  Press ENTER here when you are fully logged in...\n")  # Block until human confirms login
         self.is_authenticated = True
         logger.info("User confirmed authentication.")
 
@@ -296,29 +293,23 @@ class TraderAgent:
             # ─── KILL SWITCH ─────────────────────────────────────────
             # The bot STOPS here. It has filled the form but NOT
             # clicked Submit. The human must review and decide.
-            print("\n" + "\033[1;31m" + "=" * 60 + "\033[0m")
-            print("\033[1;31m  ⚠️  LIVE TRADE STAGED\033[0m")
-            print(f"  {'─' * 56}")
-            print(f"  \033[1mAction   : {action.upper()}\033[0m")
-            print(f"  \033[1mTicker   : {ticker.upper()}\033[0m")
-            print(f"  \033[1mQuantity : {quantity or 'N/A'}\033[0m")
-            print(f"  \033[1mAmount   : ${dollar_amount or 'N/A'}\033[0m")
-            print(f"  Screenshot: {screenshot_path}")
-            print()
-            print("  🛑 THE SUBMIT BUTTON HAS \033[1;4mNOT\033[0m BEEN CLICKED.")
-            print("  Review the order form in the browser window.")
-            print()
-            print("\033[1;33m  ⚠️  LIVE TRADE STAGED: "
-                  f"{action.upper()} {quantity} {ticker.upper()}. "
-                  f"Press ENTER to confirm staging or CTRL+C to cancel.\033[0m")
-            print("\033[1;31m" + "=" * 60 + "\033[0m")
+            logger.info("%s", "=" * 60)
+            logger.info("LIVE TRADE STAGED")
+            logger.info("Action: %s", action.upper())
+            logger.info("Ticker: %s", ticker.upper())
+            logger.info("Quantity: %s", quantity or "N/A")
+            logger.info("Amount: $%s", dollar_amount or "N/A")
+            logger.info("Screenshot: %s", screenshot_path)
+            logger.info("THE SUBMIT BUTTON HAS NOT BEEN CLICKED.")
+            logger.info("Review the order form in the browser window.")
 
             try:
-                input()  # ← BLOCKS until human presses ENTER
+                input(
+                    "LIVE TRADE STAGED. Press ENTER to confirm staging or CTRL+C to cancel.\n"
+                )  # ← BLOCKS until human presses ENTER
                 logger.info("Human confirmed staged order for %s.", ticker)
             except KeyboardInterrupt:
                 logger.warning("🛑 TRADE CANCELLED by human (CTRL+C).")
-                print("\n  🛑 TRADE CANCELLED. No action taken.")
                 return {
                     "status": "cancelled",
                     "requires_approval": True,
@@ -463,19 +454,18 @@ class TraderAgent:
                 "mode": self.mode,
             }
 
-        # Bold terminal alert
-        print("\n" + "=" * 60)
-        print(f"  📝 PAPER TRADE SIMULATED")
-        print(f"  {'─' * 56}")
-        print(f"  \033[1m{action.upper()} {ticker.upper()}: "
-              f"{quantity} shares @ ${price:.2f} "
-              f"(${cost:,.2f} total)\033[0m")
-        print(f"  Logged to: {PAPER_TRADES_LOG}")
-        print(f"  Timestamp: {ts.strftime('%Y-%m-%d %H:%M:%S UTC')}")
-        print("=" * 60 + "\n")
-
-        logger.info("📝 PAPER TRADE: %s %d shares of %s @ $%.2f",
-                     action.upper(), quantity or 0, ticker.upper(), price or 0)
+        logger.info("%s", "=" * 60)
+        logger.info("PAPER TRADE SIMULATED")
+        logger.info(
+            "%s %s: %s shares @ $%.2f ($%s total)",
+            action.upper(),
+            ticker.upper(),
+            quantity,
+            price or 0.0,
+            f"{cost:,.2f}",
+        )
+        logger.info("Logged to: %s", PAPER_TRADES_LOG)
+        logger.info("Timestamp: %s", ts.strftime("%Y-%m-%d %H:%M:%S UTC"))
 
         return {
             "status": "paper_traded",

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAppContext } from '@/context/AppContext';
+import { API_BASE_URL } from '@/lib/api';
 
 export interface AppAlert {
     id: string;
@@ -43,7 +44,7 @@ export function useAlerts() {
         if (alerts.length === 0) return;
         const tickers = [...new Set(alerts.map(a => a.ticker))].join(',');
         try {
-            const res = await fetch(`http://localhost:8000/prices?tickers=${tickers}`);
+            const res = await fetch(`${API_BASE_URL}/prices?tickers=${tickers}`);
             if (res.ok) {
                 const data = await res.json();
                 setLivePrices(data);
